@@ -1,0 +1,8 @@
+[{<<"meck">>,
+  {git,"git://github.com/eproxus/meck.git",
+       {ref,"c772db17a7c94e75d20688197f61538d63fe2ae9"}},
+  0},
+ {<<"tdiff">>,
+  {git,"git://github.com/tomas-abrahamsson/tdiff.git",
+       {ref,"bbb54ce20df388f2c7d01e8df30ef471ca98d0fb"}},
+  0}].
