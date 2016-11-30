@@ -1,12 +1,3 @@
-%%%-------------------------------------------------------------------
-%%% @author Raghav Karol <raghav.karol@gmail.com>
-%%% @copyright (C) 2016, Raghav Karol
-%%% @doc
-%%%
-%%% @end
-%%% Created : 26 Nov 2016 by Raghav Karol <raghav.karol@gmail.com>
-%%%-------------------------------------------------------------------
-
 %%%  Functions in this module might be called using RPC e.g.,
 %%%  distel. To ensure that all standard output stays in 'this' node
 %%%  make sure that all io:format(...) calls are made by processes in
