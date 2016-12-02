@@ -139,7 +139,7 @@ log_process_created(Port) ->
     ok = filelib:ensure_dir(?DETS_FILE),
     Table = dets_fswatch,
     {ok, Table} = dets:open_file(Table, [{file, ?DETS_FILE}]),
-    true = dets:insert_new(Table, {os_pid(Port), os:timestamp()}),
+    ok = dets:insert(Table, {os_pid(Port), os:timestamp()}),
     ok = dets:close(Table),
     ok.
 
