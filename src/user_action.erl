@@ -11,6 +11,7 @@
          compile/1,
          reload/1,
          compile_and_reload/1,
+         compile_and_reload_all_changes/0,
          test/0,
          test/2,
          test/3]).
@@ -47,6 +48,9 @@ compile_and_reload(Module) when is_atom(Module) ->
 compile_and_reload(Path) ->
     gen_server:call(?MODULE, {compile_and_reload, Path}).
 
+compile_and_reload_all_changes() ->
+    gen_server:call(?MODULE, compile_and_reload_all_changes).
+
 test() ->
     gen_server:call(?MODULE, test).
 
@@ -68,6 +72,11 @@ test(Type, Path, TestCase) when is_atom(TestCase) ->
 init([]) ->
     {ok, #state{}}.
 
+handle_call(compile_and_reload_all_changes, _From, State) ->
+    ChangedFiles = fswatch_buf:flush() ++ State#state.changed_files,
+    Reply = compile_and_reload(ChangedFiles, _Reload = true),
+    {reply, Reply, State};
+
 handle_call({compile_and_reload, Path}, From, State) ->
     case handle_call({compile, Path}, From, State) of
         {reply, error, State1} ->
@@ -78,72 +87,34 @@ handle_call({compile_and_reload, Path}, From, State) ->
 
 handle_call({compile, Path}, _From, State) ->
     Reply =
-        try
-            [Module] = compile_loop([Path]),
-            maybe_update_code_path([Path]),
+    case compile_and_reload([Path], _Reload = false) of
+        error ->
+            error;
+        [Module] ->
             Module
-        catch
-            throw:{error, {term, Errors}} ->
-                io:format("~p~n", [Errors]),
-                error;
-            throw:{error, {string, Errors}} ->
-                lists:foreach(fun(Error) ->
-                                      io:format("~s~n", [Error])
-                              end, Errors),
-                error
-        end,
+    end,
     {reply, Reply, State};
 
 handle_call({reload, Module}, _From, State) ->
     Reply = reload_modules([Module]),
     {reply, Reply, State};
 
-
-
-
 handle_call(test, From, #state{test = {Type, Path, TestCase}} = State) ->
     handle_call({test, {Type, Path, TestCase}}, From, State);
 
 handle_call({test, {Type, Path, TestCase}}, _From, State) ->
-    Reply =
-        try
-            %% Get Changed files
-            ChangedFiles = [Path|State#state.changed_files],
-            ChangedFiles1 = fswatch_buf:flush() ++ ChangedFiles,
-            ChangedFiles2 = lists:usort(ChangedFiles1),
-
-            %% Compile all changed files
-            Modules = compile_loop(ChangedFiles2),
-            maybe_update_code_path(ChangedFiles2),
-            ok = reload_modules(Modules),
-            verbose("~n", []),
-            [verbose("~-80s compiled ~n", [F]) || F <- ChangedFiles2],
-
-            %% Report Verbose information
-            [verbose("~-80s reloaded ~n", [M]) || M <- Modules],
-
-            %% Run Test
-            [TestModule|_] = Modules,
-            case TestCase of
-                undefined ->
-                    verbose("~s ~s~n", [Type, TestModule]);
-                _ ->
-                    verbose("~s ~s:~s(...)~n", [Type, TestModule, TestCase])
-            end,
-            run_test(Type, State, TestModule, TestCase),
-            ok
-        catch
-            throw:{error, {term, Errors}} ->
-                io:format("~p~n", [Errors]),
-                error;
-            throw:{error, {string, Errors}} ->
-                lists:foreach(fun(Error) ->
-                                      io:format("~s~n", [Error])
-                              end, Errors),
-                error
-        end,
+    ChangedFiles = [Path|State#state.changed_files],
+    ChangedFiles1 = fswatch_buf:flush() ++ ChangedFiles,
+    [TestModule|_] = compile_and_reload(ChangedFiles1, _Reload = true),
+    case TestCase of
+        undefined ->
+            verbose("~s ~s~n", [Type, TestModule]);
+        _ ->
+            verbose("~s ~s:~s(...)~n", [Type, TestModule, TestCase])
+    end,
+    run_test(Type, State, TestModule, TestCase),
     State1 = State#state{test = {Type, Path, TestCase}},
-    {reply, Reply, State1}.
+    {reply, ok, State1}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -160,6 +131,36 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+compile_and_reload(ChangedFiles, Reload) ->
+    try
+        %% Compile all changed files
+        ChangedFiles1 = lists:usort(ChangedFiles),
+        Modules = compile_loop(ChangedFiles1),
+        maybe_update_code_path(ChangedFiles1),
+        verbose("~n", []),
+        [verbose("~-80s compiled ~n", [F]) || F <- ChangedFiles1],
+
+        %% Report Verbose information
+        case Reload of
+            true ->
+                ok = reload_modules(Modules),
+                [verbose("~-80s reloaded ~n", [M]) || M <- Modules];
+            false ->
+                ok
+        end,
+        Modules
+    catch
+        throw:{error, {term, Errors}} ->
+            io:format("~p~n", [Errors]),
+            error;
+        throw:{error, {string, Errors}} ->
+            lists:foreach(fun(Error) ->
+                                  io:format("~s~n", [Error])
+                          end, Errors),
+            error
+    end.
+
+
 verbose(Format, Args) ->
     case application:get_env(erl_dev_tools, verbose, true) of
         true ->

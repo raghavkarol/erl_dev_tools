@@ -11,6 +11,7 @@ suite() ->
     [{timetrap,{seconds,30}}].
 
 init_per_suite(Config) ->
+    application:set_env(erl_dev_tools, verbose, false),
     {ok, Cwd} = file:get_cwd(),
     {ok, Home} = util:find_project_home(Cwd),
     [{home, Home},
@@ -82,6 +83,25 @@ compile_and_reload_test(Config) ->
     Expected = EbinDir ++ "file1.beam",
     {file, Expected} = code:is_loaded(file1),
     ok.
+
+compile_and_reload_all_changed_test(Config) ->
+    SrcDir = ?config(test_app_src, Config),
+    EbinDir = ?config(test_app_ebin, Config),
+    code:purge(file1),
+    os:cmd("touch " ++ SrcDir ++ "/file1.erl"),
+    os:cmd("touch " ++ SrcDir ++ "/file2.erl"),
+    [_, _] = fswatch_buf:wait_get_changes(),
+    Result = user_action:compile_and_reload_all_changes(),
+    [file1, file2] = lists:sort(Result),
+    true = filelib:is_regular(EbinDir ++ "/file1.beam"),
+    true = filelib:is_regular(EbinDir ++ "/file2.beam"),
+    Expected1 = EbinDir ++ "file1.beam",
+    {file, Expected1} = code:is_loaded(file1),
+    Expected2 = EbinDir ++ "file2.beam",
+    {file, Expected2} = code:is_loaded(file2),
+
+    ok.
+
 
 eunit_path_test(Config) ->
     Opts = ?config(eunit_opts, Config),
