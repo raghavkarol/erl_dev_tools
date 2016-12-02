@@ -10,6 +10,7 @@
 -export([start_link/0,
          compile/1,
          reload/1,
+         compile_and_reload/1,
          test/0,
          test/2,
          test/3]).
@@ -37,9 +38,14 @@ compile(Module) when is_atom(Module) ->
 compile(Path) ->
     gen_server:call(?MODULE, {compile, Path}).
 
-
 reload(Module) ->
     gen_server:call(?MODULE, {reload, Module}).
+
+compile_and_reload(Module) when is_atom(Module) ->
+    compile_and_reload(source_path(Module));
+
+compile_and_reload(Path) ->
+    gen_server:call(?MODULE, {compile_and_reload, Path}).
 
 test() ->
     gen_server:call(?MODULE, test).
@@ -62,14 +68,25 @@ test(Type, Path, TestCase) when is_atom(TestCase) ->
 init([]) ->
     {ok, #state{}}.
 
+handle_call({compile_and_reload, Path}, From, State) ->
+    case handle_call({compile, Path}, From, State) of
+        {reply, error, State1} ->
+            {reply, error, State1};
+        {reply, Module, State1} ->
+            handle_call({reload, Module}, From, State1)
+    end;
+
 handle_call({compile, Path}, _From, State) ->
     Reply =
         try
-            compile_loop([Path]),
+            [Module] = compile_loop([Path]),
             maybe_update_code_path([Path]),
-            ok
+            Module
         catch
-            throw:{error, Errors} ->
+            throw:{error, {term, Errors}} ->
+                io:format("~p~n", [Errors]),
+                error;
+            throw:{error, {string, Errors}} ->
                 lists:foreach(fun(Error) ->
                                       io:format("~s~n", [Error])
                               end, Errors),
@@ -80,6 +97,9 @@ handle_call({compile, Path}, _From, State) ->
 handle_call({reload, Module}, _From, State) ->
     Reply = reload_modules([Module]),
     {reply, Reply, State};
+
+
+
 
 handle_call(test, From, #state{test = {Type, Path, TestCase}} = State) ->
     handle_call({test, {Type, Path, TestCase}}, From, State);
@@ -113,7 +133,10 @@ handle_call({test, {Type, Path, TestCase}}, _From, State) ->
             run_test(Type, State, TestModule, TestCase),
             ok
         catch
-            throw:{error, Errors} ->
+            throw:{error, {term, Errors}} ->
+                io:format("~p~n", [Errors]),
+                error;
+            throw:{error, {string, Errors}} ->
                 lists:foreach(fun(Error) ->
                                       io:format("~s~n", [Error])
                               end, Errors),
@@ -138,7 +161,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 verbose(Format, Args) ->
-    case application:get_env(erl_dev_tools, verbose, false) of
+    case application:get_env(erl_dev_tools, verbose, true) of
         true ->
             io:format(Format, Args);
         false ->
@@ -199,10 +222,14 @@ compile_loop(Result, [File|Rest]) ->
             {ok, Module} ->
                 [Module|Result];
             {error, Errors, _Warnings} ->
-                ct:pal("Errors: ~p", [Errors]),
                 StrErrors =
                     util:compile_errors_to_emacs_parseable_string(Errors),
-                throw({error, StrErrors})
+                case StrErrors of
+                    [] ->
+                        throw({error, {term, Errors}});
+                    _ ->
+                        throw({error, {string, StrErrors}})
+                    end
         end,
     compile_loop(NewResult, Rest).
 

@@ -51,7 +51,7 @@ code_path_updated_test(Config) ->
     CompileOutDir = util:compile_opts(outdir, SrcDir ++ "/file1.erl"),
     ok = filelib:ensure_dir(CompileOutDir),
     code:del_path(maybe_remove_trailing_slash(CompileOutDir)),
-    ok = user_action:compile(SrcDir ++ "/file3.erl"),
+    file3 = user_action:compile(SrcDir ++ "/file3.erl"),
     true = lists:member(maybe_remove_trailing_slash(CompileOutDir), code:get_path()),
     ok.
 
@@ -59,7 +59,7 @@ compile_test(Config) ->
     SrcDir = ?config(test_app_src, Config),
     EbinDir = ?config(test_app_ebin, Config),
     false = filelib:is_regular(EbinDir ++ "/file1.beam"),
-    ok = user_action:compile(SrcDir ++ "/file1.erl"),
+    file1 = user_action:compile(SrcDir ++ "/file1.erl"),
     true = filelib:is_regular(EbinDir ++ "/file1.beam"),
     ok.
 
@@ -67,8 +67,18 @@ reload_test(Config) ->
     SrcDir = ?config(test_app_src, Config),
     EbinDir = ?config(test_app_ebin, Config),
     code:purge(file1),
-    ok = user_action:compile(SrcDir ++ "/file1.erl"),
-    user_action:reload(file1),
+    file1 = user_action:compile(SrcDir ++ "/file1.erl"),
+    ok = user_action:reload(file1),
+    Expected = EbinDir ++ "file1.beam",
+    {file, Expected} = code:is_loaded(file1),
+    ok.
+
+compile_and_reload_test(Config) ->
+    SrcDir = ?config(test_app_src, Config),
+    EbinDir = ?config(test_app_ebin, Config),
+    code:purge(file1),
+    ok = user_action:compile_and_reload(SrcDir ++ "/file1.erl"),
+    true = filelib:is_regular(EbinDir ++ "/file1.beam"),
     Expected = EbinDir ++ "file1.beam",
     {file, Expected} = code:is_loaded(file1),
     ok.
@@ -92,7 +102,7 @@ eunit_module_test(Config) ->
     Opts = ?config(eunit_opts, Config),
     TestDir = ?config(test_app_test, Config),
     TestFile = TestDir ++ "file1_test.erl",
-    ok = user_action:compile(TestFile),
+    file1_test = user_action:compile(TestFile),
 
     ok = meck:new(eunit),
     ok = meck:expect(eunit, test, fun meck_eunit/2),
@@ -121,7 +131,7 @@ ct_module_test(Config) ->
     Opts = ?config(ct_opts, Config),
     TestDir = ?config(test_app_test, Config),
     TestFile = TestDir ++ "file1_SUITE.erl",
-    ok = user_action:compile(TestFile),
+    file1_SUITE = user_action:compile(TestFile),
 
     ok = meck:new(ct),
     ok = meck:expect(ct, run_test, fun meck_ct_run/1),
@@ -145,7 +155,7 @@ eqc_path_test(Config) ->
 eqc_module_test(Config) ->
     TestDir = ?config(test_app_test, Config),
     TestFile = TestDir ++ "file1_eqc.erl",
-    ok = user_action:compile(TestFile),
+    file1_eqc = user_action:compile(TestFile),
 
     ok = meck:new(eqc),
     ok = meck:expect(eqc, quickcheck, fun meck_ct_eqc_quickcheck/1),
