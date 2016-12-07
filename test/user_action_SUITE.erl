@@ -12,6 +12,7 @@ suite() ->
 
 init_per_suite(Config) ->
     application:set_env(erl_dev_tools, verbose, false),
+    application:set_env(erl_dev_tools, mode, rebar3),
     {ok, Cwd} = file:get_cwd(),
     {ok, Home} = util:find_project_home(Cwd),
     [{home, Home},
@@ -87,7 +88,8 @@ compile_and_reload_test(Config) ->
 compile_and_reload_all_changed_test(Config) ->
     SrcDir = ?config(test_app_src, Config),
     EbinDir = ?config(test_app_ebin, Config),
-    code:purge(file1),
+    code:delete(file1),
+    code:delete(file2),
     os:cmd("touch " ++ SrcDir ++ "/file1.erl"),
     os:cmd("touch " ++ SrcDir ++ "/file2.erl"),
     [_, _] = fswatch_buf:wait_get_changes(),
@@ -99,9 +101,25 @@ compile_and_reload_all_changed_test(Config) ->
     {file, Expected1} = code:is_loaded(file1),
     Expected2 = EbinDir ++ "file2.beam",
     {file, Expected2} = code:is_loaded(file2),
-
     ok.
 
+compile_all_changed_test(Config) ->
+    SrcDir = ?config(test_app_src, Config),
+    EbinDir = ?config(test_app_ebin, Config),
+    code:purge(file1),
+    code:delete(file1),
+    code:purge(file2),
+    code:delete(file2),
+    os:cmd("touch " ++ SrcDir ++ "/file1.erl"),
+    os:cmd("touch " ++ SrcDir ++ "/file2.erl"),
+    [_, _] = fswatch_buf:wait_get_changes(),
+    Result = user_action:compile_all_changes(),
+    [file1, file2] = lists:sort(Result),
+    true = filelib:is_regular(EbinDir ++ "/file1.beam"),
+    true = filelib:is_regular(EbinDir ++ "/file2.beam"),
+    false = code:is_loaded(file1),
+    false = code:is_loaded(file2),
+    ok.
 
 eunit_path_test(Config) ->
     Opts = ?config(eunit_opts, Config),

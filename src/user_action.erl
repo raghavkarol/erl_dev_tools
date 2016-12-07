@@ -9,12 +9,14 @@
 %% API
 -export([start_link/0,
          compile/1,
+         compile_all_changes/0,
          reload/1,
          compile_and_reload/1,
          compile_and_reload_all_changes/0,
          test/0,
          test/2,
-         test/3]).
+         test/3,
+         test/4]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -34,12 +36,14 @@ start_link() ->
 compile(Module) when is_atom(Module) ->
     compile(source_path(Module));
 
-
 compile(Module) when is_atom(Module) ->
     compile(source_path(Module));
 
 compile(Path) ->
     gen_server:call(?MODULE, {compile, Path}).
+
+compile_all_changes() ->
+    gen_server:call(?MODULE, compile_all_changes).
 
 reload(Module) ->
     gen_server:call(?MODULE, {reload, Module}).
@@ -66,13 +70,22 @@ test(Type, Module, TestCase) when is_atom(Module), is_atom(TestCase) ->
     test(Type, source_path(Module), TestCase);
 
 test(Type, Path, TestCase) when is_atom(TestCase) ->
-    gen_server:call(?MODULE, {test, {Type, Path, TestCase}}, ?TIMEOUT).
+    test(Type, Path, TestCase, _Options = []).
+
+test(Type, Path, TestCase, Options) when is_atom(TestCase) ->
+    gen_server:call(?MODULE, {test, {Type, Path, TestCase, Options}}, ?TIMEOUT).
+
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 init([]) ->
     {ok, #state{}}.
+
+handle_call(compile_all_changes, _From, State) ->
+    ChangedFiles = fswatch_buf:flush() ++ State#state.changed_files,
+    Reply = compile_and_reload(ChangedFiles, _Reload = false),
+    {reply, Reply, State};
 
 handle_call(compile_and_reload_all_changes, _From, State) ->
     ChangedFiles = fswatch_buf:flush() ++ State#state.changed_files,
@@ -97,21 +110,32 @@ handle_call({reload, Module}, _From, State) ->
     Reply = reload_modules([Module]),
     {reply, Reply, State};
 
-handle_call(test, From, #state{test = {Type, Path, TestCase}} = State) ->
-    handle_call({test, {Type, Path, TestCase}}, From, State);
+handle_call(test, _From, #state{test = undefined} = State) ->
+    {reply, no_previous_test, State};
 
-handle_call({test, {Type, Path, TestCase}}, _From, State) ->
-    ChangedFiles = [Path|State#state.changed_files],
-    ChangedFiles1 = fswatch_buf:flush() ++ ChangedFiles,
-    [TestModule|_] = compile_and_reload(ChangedFiles1, _Reload = true),
-    case TestCase of
-        undefined ->
-            verbose("~s ~s~n", [Type, TestModule]);
-        _ ->
-            verbose("~s ~s:~s(...)~n", [Type, TestModule, TestCase])
+handle_call(test, From, #state{test = TestSpec} = State) ->
+    handle_call({test, TestSpec}, From, State);
+
+handle_call({test, TestSpec = {Type, Path, TestCase, Options}}, _From, State) ->
+    NoCompile = proplists:get_value(no_compile, Options, false),
+    TestModule =
+    case NoCompile of
+        true ->
+            filename:basename(Path, ".erl");
+        false ->
+            ChangedFiles = [Path|State#state.changed_files],
+            ChangedFiles1 = fswatch_buf:flush() ++ ChangedFiles,
+            [TestModule0|_] = compile_and_reload(ChangedFiles1, _Reload = true),
+            case TestCase of
+                undefined ->
+                    verbose("~s ~s~n", [Type, TestModule0]);
+                _ ->
+                    verbose("~s ~s:~s(...)~n", [Type, TestModule0, TestCase])
+            end,
+            TestModule0
     end,
     run_test(Type, State, TestModule, TestCase),
-    State1 = State#state{test = {Type, Path, TestCase}},
+    State1 = State#state{test = TestSpec},
     {reply, ok, State1}.
 
 handle_cast(_Msg, State) ->
@@ -135,14 +159,14 @@ compile_and_reload(ChangedFiles, Reload) ->
         ChangedFiles1 = lists:usort(ChangedFiles),
         Modules = compile_loop(ChangedFiles1),
         maybe_update_code_path(ChangedFiles1),
-        verbose("~n", []),
+        verbose("erl_dev_tools~n",[]),
         [verbose("~-80s compiled ~n", [F]) || F <- ChangedFiles1],
 
         %% Report Verbose information
         case Reload of
             true ->
                 ok = reload_modules(Modules),
-                [verbose("~-80s reloaded ~n", [M]) || M <- Modules];
+                [verbose("~-80s reloaded ~n", [code:which(M)]) || M <- Modules];
             false ->
                 ok
         end,
@@ -162,7 +186,9 @@ compile_and_reload(ChangedFiles, Reload) ->
 verbose(Format, Args) ->
     case application:get_env(erl_dev_tools, verbose, true) of
         true ->
-            io:format(Format, Args);
+            %% ==> rebar
+            %% ===> rebar3
+            io:format("==> " ++ Format, Args);
         false ->
             ok
     end.
