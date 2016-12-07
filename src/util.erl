@@ -6,6 +6,9 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+%% Could normalize path using a shell command
+%% os:cmd("cd /Users/raghav/github/erl_dev_tools/../erl_dev_tools/../erl_dev_tools/ ; pwd").
+
 all_tests(Module) ->
     [F || {F, A} <- Module:module_info(exports), is_testcase({F, A})].
 
@@ -85,14 +88,39 @@ find_project_home(Path) ->
     end.
 
 compile_opts(outdir, Path) ->
-    {ok, Home} = find_project_home(Path),
-    AppName = filename:basename(Home),
-    Home ++ "/_build/erl_dev_tools/lib/" ++ AppName ++ "/ebin/";
+    case application:get_env(erl_dev_tools, mode, rebar) of
+        rebar3 ->
+            {ok, Home} = find_project_home(Path),
+            AppName = filename:basename(Home),
+            Home ++ "/_build/erl_dev_tools/lib/" ++ AppName ++ "/ebin/";
+        rebar ->
+            case {is_ct_suite(Path), is_in_src_dir(Path)} of
+                {false, false} ->
+                    filename:dirname(Path);
+                {false, true} ->
+                    filename:dirname(filename:dirname(Path)) ++ "/ebin";
+                {true, false} ->
+                    filename:dirname(Path)
+            end
+    end;
 
 compile_opts(i, Path) ->
     {ok, Home} = find_project_home(Path),
     [Home ++ "/include"] ++ filelib:wildcard(Home ++ "/deps/*/include/").
 
+
+is_ct_suite(Path) ->
+    case lists:reverse(filename:basename(Path, ".erl")) of
+        "ETIUS_" ++ _ -> true;
+        _ -> false
+    end.
+
+is_in_src_dir(Path) ->
+    case lists:reverse(filename:dirname(Path)) of
+        "crs/" ++ _ -> true;
+        "./crs/" ++ _ -> true;
+        _ -> false
+    end.
 
 -ifdef(TEST).
 find_project_home_test() ->
@@ -108,7 +136,24 @@ find_project_home_test() ->
 
     ok.
 
-compile_opts_test() ->
+compile_opts_rebar_test() ->
+    application:set_env(erl_dev_tools, mode, rebar),
+    {ok, Cwd} = file:get_cwd(),
+    [ErlSrcFile|_] = filelib:wildcard(Cwd ++ "/src/*.erl"),
+    [ErlTestFile|_] = filelib:wildcard(Cwd ++ "/test/*.erl"),
+
+    ExpectedOutDirSrcFile = filename:dirname(filename:dirname(ErlSrcFile)) ++ "/ebin",
+    ExpectedOutDirTestFile = filename:dirname((ErlTestFile)),
+
+    ExpectedOutDirSrcFile = compile_opts(outdir, ErlSrcFile),
+    ExpectedOutDirTestFile = compile_opts(outdir, ErlTestFile),
+
+    ExpectedIncludeDirs = [Cwd ++ "/include"],
+    ExpectedIncludeDirs = compile_opts(i, ErlSrcFile),
+    ok.
+
+compile_opts_rebar3_test() ->
+    application:set_env(erl_dev_tools, mode, rebar3),
     {ok, Cwd} = file:get_cwd(),
     [ErlSrcFile|_] = filelib:wildcard(Cwd ++ "/src/*.erl"),
     [ErlTestFile|_] = filelib:wildcard(Cwd ++ "/test/*.erl"),
@@ -120,4 +165,19 @@ compile_opts_test() ->
     ExpectedIncludeDirs = [Cwd ++ "/include"],
     ExpectedIncludeDirs = compile_opts(i, ErlSrcFile),
     ok.
+
+is_ct_suite_test() ->
+    false = is_ct_suite("/a/b/c/x.erl"),
+    false = is_ct_suite("/a/b/c/x_SUITE.beam"),
+    true = is_ct_suite("/a/b/c/x_SUITE.erl"),
+    true = is_ct_suite("x_SUITE.erl"),
+    ok.
+
+is_in_src_dir_test() ->
+    false = is_in_src_dir("/a/b/c/x.erl"),
+    true = is_in_src_dir("/a/b/c/src/x.erl"),
+    true = is_in_src_dir("/a/b/c/src/./x.erl"),
+    ok.
+
+
 -endif.
