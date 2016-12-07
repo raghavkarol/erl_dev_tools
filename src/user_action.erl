@@ -23,6 +23,8 @@
 -record(state, {changed_files = [] :: [string()],
                 test}).
 
+-define(TIMEOUT, timer:minutes(1.5)).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -52,7 +54,7 @@ compile_and_reload_all_changes() ->
     gen_server:call(?MODULE, compile_and_reload_all_changes).
 
 test() ->
-    gen_server:call(?MODULE, test).
+    gen_server:call(?MODULE, test, ?TIMEOUT).
 
 test(Type, Module) when is_atom(Module) ->
     test(Type, source_path(Module), _TestCase = undefined);
@@ -64,7 +66,7 @@ test(Type, Module, TestCase) when is_atom(Module), is_atom(TestCase) ->
     test(Type, source_path(Module), TestCase);
 
 test(Type, Path, TestCase) when is_atom(TestCase) ->
-    gen_server:call(?MODULE, {test, {Type, Path, TestCase}}, 60*1000).
+    gen_server:call(?MODULE, {test, {Type, Path, TestCase}}, ?TIMEOUT).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -77,13 +79,9 @@ handle_call(compile_and_reload_all_changes, _From, State) ->
     Reply = compile_and_reload(ChangedFiles, _Reload = true),
     {reply, Reply, State};
 
-handle_call({compile_and_reload, Path}, From, State) ->
-    case handle_call({compile, Path}, From, State) of
-        {reply, error, State1} ->
-            {reply, error, State1};
-        {reply, Module, State1} ->
-            handle_call({reload, Module}, From, State1)
-    end;
+handle_call({compile_and_reload, Path}, _From, State) ->
+    compile_and_reload([Path], _Reload = true),
+    {reply, ok, State};
 
 handle_call({compile, Path}, _From, State) ->
     Reply =
