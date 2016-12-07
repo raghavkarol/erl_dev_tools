@@ -23,7 +23,7 @@
 -record(state, {changed_files = [] :: [string()],
                 test}).
 
--define(TIMEOUT, timer:minutes(1.5)).
+-define(TIMEOUT, trunc(timer:minutes(1.5))).
 
 %%%===================================================================
 %%% API
