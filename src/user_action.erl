@@ -118,10 +118,9 @@ handle_call(test, From, #state{test = TestSpec} = State) ->
 
 handle_call({test, TestSpec = {Type, Path, TestCase, Options}}, _From, State) ->
     NoCompile = proplists:get_value(no_compile, Options, false),
-    TestModule =
     case NoCompile of
         true ->
-            filename:basename(Path, ".erl");
+            ok;
         false ->
             ChangedFiles = [Path|State#state.changed_files],
             ChangedFiles1 = fswatch_buf:flush() ++ ChangedFiles,
@@ -131,9 +130,9 @@ handle_call({test, TestSpec = {Type, Path, TestCase, Options}}, _From, State) ->
                     verbose("~s ~s~n", [Type, TestModule0]);
                 _ ->
                     verbose("~s ~s:~s(...)~n", [Type, TestModule0, TestCase])
-            end,
-            TestModule0
-    end,
+            end
+        end,
+    TestModule = get_module(Path),
     run_test(Type, State, TestModule, TestCase),
     State1 = State#state{test = TestSpec},
     {reply, ok, State1}.
@@ -153,6 +152,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+get_module(Path) ->
+    filename:basename(Path, ".erl").
+
 compile_and_reload(ChangedFiles, Reload) ->
     try
         %% Compile all changed files
