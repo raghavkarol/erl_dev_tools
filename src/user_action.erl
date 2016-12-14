@@ -199,15 +199,14 @@ verbose(Format, Args) ->
 source_path(Module) ->
     proplists:get_value(source, Module:module_info(compile)).
 
-run_test(ct, _State, Module, undefined) ->
-    Opts = application:get_env(erl_dev_tools, ct_opts, []),
-    Opts1 = [{auto_compile, false}] ++ Opts,
-    ct:run_test(Opts1 ++ [{suite, Module}]);
-
 run_test(ct, _State, Module, TestCase) ->
     Opts = application:get_env(erl_dev_tools, ct_opts, []),
-    Opts1 = [{auto_compile, false}] ++ Opts,
-    ct:run_test(Opts1 ++ [{suite, Module}, {testcase, TestCase}]);
+    Opts1 = Opts
+        ++ [{auto_compile, false}]
+        ++ [{suite, Module}]
+        ++ [{testcase, TestCase} || TestCase /= undefined ],
+
+    ct:run_test(Opts1);
 
 run_test(eunit, _State, Module, undefined) ->
     Opts = [no_tty, {report, {eunit_formatter, []}}],
