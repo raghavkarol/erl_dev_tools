@@ -1,6 +1,17 @@
 -module(util).
 
--compile(export_all).
+-export([all_tests/1,
+         is_testcase/1,
+         getenv/2,
+         get_watch_dirs/1,
+         compile/2,
+         compile_and_reload/1,
+         compile_and_reload/2,
+         compile_errors_to_emacs_parseable_string/1,
+         compile_opts/2,
+         reload/1,
+         find_project_home/1
+        ]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -178,6 +189,5 @@ is_in_src_dir_test() ->
     true = is_in_src_dir("/a/b/c/src/x.erl"),
     true = is_in_src_dir("/a/b/c/src/./x.erl"),
     ok.
-
 
 -endif.
