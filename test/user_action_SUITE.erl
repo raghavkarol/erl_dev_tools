@@ -23,7 +23,6 @@ init_per_suite(Config) ->
      {test_app_ebin, Home ++ "/test_app/_build/erl_dev_tools/lib/test_app/ebin/"},
      {eunit_opts, [no_tty, {report, {eunit_formatter, []}}]},
      {ct_opts, [{logdir, "/dev/null/logs"},
-                {refresh_logs, "/dev/null/logs"},
                 {auto_compile, false}]}
      | Config].
 
