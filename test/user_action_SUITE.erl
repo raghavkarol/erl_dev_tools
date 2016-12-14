@@ -168,8 +168,8 @@ ct_path_test(Config) ->
 ct_module_test(Config) ->
     Opts = ?config(ct_opts, Config),
     TestDir = ?config(test_app_test, Config),
-    TestFile = TestDir ++ "file1_SUITE.erl",
-    file1_SUITE = user_action:compile(TestFile),
+    file1_SUITE = user_action:compile(TestDir ++ "file1_SUITE.erl"),
+    file1_with_groups_SUITE = user_action:compile(TestDir ++ "file1_with_groups_SUITE.erl"),
 
     ok = meck:new(ct),
     ok = meck:expect(ct, run_test, fun meck_ct_run/1),
@@ -177,7 +177,16 @@ ct_module_test(Config) ->
     true = meck:called(ct, run_test, [Opts ++ [{suite,file1_SUITE}]]),
 
     ok = user_action:test(ct, file1_SUITE, dummy_test),
-    true = meck:called(ct, run_test, [Opts ++ [{suite,file1_SUITE},{testcase, dummy_test}]]),
+    true = meck:called(ct, run_test, [Opts ++ [{suite,file1_SUITE}, {testcase, dummy_test}]]),
+
+    ok = user_action:test(ct, file1_with_groups_SUITE, dummy_test),
+    true = meck:called(ct, run_test, [Opts ++ [{suite,file1_with_groups_SUITE}, {testcase, dummy_test}]]),
+
+    ok = user_action:test(ct, file1_with_groups_SUITE, group_dummy_test),
+    true = meck:called(ct, run_test, [Opts ++ [{suite,file1_with_groups_SUITE},
+                                               {group, [group1]},
+                                               {testcase, group_dummy_test}]]),
+
     ok.
 
 eqc_path_test(Config) ->

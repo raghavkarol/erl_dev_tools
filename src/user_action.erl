@@ -204,6 +204,7 @@ run_test(ct, _State, Module, TestCase) ->
     Opts1 = Opts
         ++ [{auto_compile, false}]
         ++ [{suite, Module}]
+        ++ ct_group_opts(Module, TestCase)
         ++ [{testcase, TestCase} || TestCase /= undefined ],
 
     ct:run_test(Opts1);
@@ -270,4 +271,20 @@ parse_transform_compile_flags(Flags) ->
             Flags;
         _ ->
             [{parse_transform, lager_transform}| Flags]
+    end.
+
+-spec ct_group_opts(Suite :: module(), TestCase :: atom())
+   -> [{group, [Group :: atom()]}] | [].
+ct_group_opts(Suite, Case) ->
+    Group =
+        try Suite:groups() of
+            Groups ->
+                [ Name || {Name, _Props, Cases} <- Groups,
+                          proplists:get_value(Case, Cases, false)]
+        catch error:undef ->
+                []
+        end,
+    case Group of
+        [] -> Group;
+        _ -> [{group, Group}]
     end.
