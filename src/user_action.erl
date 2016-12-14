@@ -152,8 +152,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+-spec get_module(Path :: string()) -> module().
 get_module(Path) ->
-    filename:basename(Path, ".erl").
+    list_to_atom(filename:basename(Path, ".erl")).
 
 compile_and_reload(ChangedFiles, Reload) ->
     try
