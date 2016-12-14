@@ -13,6 +13,7 @@ suite() ->
 init_per_suite(Config) ->
     application:set_env(erl_dev_tools, verbose, false),
     application:set_env(erl_dev_tools, mode, rebar3),
+    application:set_env(erl_dev_tools, ct_opts, [{logdir, "/dev/null/logs"}]),
     {ok, Cwd} = file:get_cwd(),
     {ok, Home} = util:find_project_home(Cwd),
     [{home, Home},
@@ -21,7 +22,9 @@ init_per_suite(Config) ->
      {test_app_test,  Home ++ "/test_app/test/"},
      {test_app_ebin, Home ++ "/test_app/_build/erl_dev_tools/lib/test_app/ebin/"},
      {eunit_opts, [no_tty, {report, {eunit_formatter, []}}]},
-     {ct_opts, [{auto_compile, false}]}
+     {ct_opts, [{logdir, "/dev/null/logs"},
+                {refresh_logs, "/dev/null/logs"},
+                {auto_compile, false}]}
      | Config].
 
 end_per_suite(_Config) ->
@@ -174,6 +177,8 @@ ct_module_test(Config) ->
     ok = meck:new(ct),
     ok = meck:expect(ct, run_test, fun meck_ct_run/1),
     ok = user_action:test(ct, file1_SUITE),
+    ct:pal("meck:history(ct): ~p", [meck:history(ct)]),
+    ct:pal("Opts: ~p", [Opts]),
     true = meck:called(ct, run_test, [Opts ++ [{suite,file1_SUITE}]]),
 
     ok = user_action:test(ct, file1_SUITE, dummy_test),

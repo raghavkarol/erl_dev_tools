@@ -202,6 +202,7 @@ source_path(Module) ->
 run_test(ct, _State, Module, TestCase) ->
     Opts = application:get_env(erl_dev_tools, ct_opts, []),
     Opts1 = Opts
+        ++ ct_refresh_logs(proplists:get_value(logdir, Opts, ""))
         ++ [{auto_compile, false}]
         ++ [{suite, Module}]
         ++ ct_group_opts(Module, TestCase)
@@ -288,3 +289,8 @@ ct_group_opts(Suite, Case) ->
         [] -> Group;
         _ -> [{group, Group}]
     end.
+
+ct_refresh_logs("") ->
+    [];
+ct_refresh_logs(LogDir) ->
+    [{refresh_logs, LogDir}].
