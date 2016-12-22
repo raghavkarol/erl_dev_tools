@@ -25,7 +25,7 @@
 -record(state, {changed_files = [] :: [string()],
                 test}).
 
--define(TIMEOUT, trunc(timer:minutes(1.5))).
+-define(TIMEOUT, trunc(timer:minutes(3))).
 
 %%%===================================================================
 %%% API
@@ -73,7 +73,8 @@ test(Type, Path, TestCase) when is_atom(TestCase) ->
     test(Type, Path, TestCase, _Options = []).
 
 test(Type, Path, TestCase, Options) when is_atom(TestCase) ->
-    gen_server:call(?MODULE, {test, {Type, Path, TestCase, Options}}, ?TIMEOUT).
+    Timeout = proplists:get_value(timeout, Options, ?TIMEOUT),
+    gen_server:call(?MODULE, {test, {Type, Path, TestCase, Options}}, Timeout).
 
 
 %%%===================================================================
