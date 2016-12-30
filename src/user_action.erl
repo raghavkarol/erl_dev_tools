@@ -26,12 +26,13 @@
                 test}).
 
 -define(TIMEOUT, trunc(timer:minutes(3))).
+-define(SERVER, ?MODULE).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 compile(Module) when is_atom(Module) ->
     compile(source_path(Module));
@@ -40,25 +41,25 @@ compile(Module) when is_atom(Module) ->
     compile(source_path(Module));
 
 compile(Path) ->
-    gen_server:call(?MODULE, {compile, Path}).
+    gen_server:call(?SERVER, {compile, Path}).
 
 compile_all_changes() ->
-    gen_server:call(?MODULE, compile_all_changes).
+    gen_server:call(?SERVER, compile_all_changes).
 
 reload(Module) ->
-    gen_server:call(?MODULE, {reload, Module}).
+    gen_server:call(?SERVER, {reload, Module}).
 
 compile_and_reload(Module) when is_atom(Module) ->
     compile_and_reload(source_path(Module));
 
 compile_and_reload(Path) ->
-    gen_server:call(?MODULE, {compile_and_reload, Path}).
+    gen_server:call(?SERVER, {compile_and_reload, Path}).
 
 compile_and_reload_all_changes() ->
-    gen_server:call(?MODULE, compile_and_reload_all_changes).
+    gen_server:call(?SERVER, compile_and_reload_all_changes).
 
 test() ->
-    gen_server:call(?MODULE, test, ?TIMEOUT).
+    gen_server:call(?SERVER, test, ?TIMEOUT).
 
 test(Type, Module) when is_atom(Module) ->
     test(Type, source_path(Module), _TestCase = undefined);
@@ -74,7 +75,7 @@ test(Type, Path, TestCase) when is_atom(TestCase) ->
 
 test(Type, Path, TestCase, Options) when is_atom(TestCase) ->
     Timeout = proplists:get_value(timeout, Options, ?TIMEOUT),
-    gen_server:call(?MODULE, {test, {Type, Path, TestCase, Options}}, Timeout).
+    gen_server:call(?SERVER, {test, {Type, Path, TestCase, Options}}, Timeout).
 
 
 %%%===================================================================
