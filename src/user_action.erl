@@ -135,9 +135,10 @@ handle_call({test, TestSpec = {Type, Path, TestCase, Options}}, _From, State) ->
             end
         end,
     TestModule = get_module(Path),
-    run_test(Type, State, TestModule, TestCase),
+    Result = run_test(Type, State, TestModule, TestCase),
     State1 = State#state{test = TestSpec},
-    {reply, ok, State1}.
+    Reply = Result,
+    {reply, Reply, State1}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
