@@ -119,23 +119,9 @@ handle_call(test, From, #state{test = TestSpec} = State) ->
     handle_call({test, TestSpec}, From, State);
 
 handle_call({test, TestSpec = {Type, Path, TestCase, Options}}, _From, State) ->
-    NoCompile = proplists:get_value(no_compile, Options, false),
-    case NoCompile of
-        true ->
-            ok;
-        false ->
-            ChangedFiles = [Path|State#state.changed_files],
-            ChangedFiles1 = fswatch_buf:flush() ++ ChangedFiles,
-            [TestModule0|_] = compile_and_reload(ChangedFiles1, _Reload = true),
-            case TestCase of
-                undefined ->
-                    verbose("~s ~s~n", [Type, TestModule0]);
-                _ ->
-                    verbose("~s ~s:~s(...)~n", [Type, TestModule0, TestCase])
-            end
-        end,
-    TestModule = get_module(Path),
-    Result = run_test(Type, State, TestModule, TestCase),
+    maybe_compile_changes(Options, Path, State),
+    {TestDir, TestModule} = get_module(Path),
+    Result = run_test(Type, State, {TestDir, TestModule, TestCase}),
     State1 = State#state{test = TestSpec},
     Reply = Result,
     {reply, Reply, State1}.
@@ -155,9 +141,24 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
--spec get_module(Path :: string()) -> module().
+maybe_compile_changes(Options, Path, State) ->
+    NoCompile = proplists:get_value(no_compile, Options, false),
+    case NoCompile of
+        true ->
+            ok;
+        false ->
+            ChangedFiles = [Path|State#state.changed_files],
+            ChangedFiles1 = fswatch_buf:flush() ++ ChangedFiles,
+            compile_and_reload(ChangedFiles1, _Reload = true)
+    end.
+
 get_module(Path) ->
-    list_to_atom(filename:basename(Path, ".erl")).
+    case {filelib:is_dir(Path), filelib:is_regular(Path)} of
+        {true, _} ->
+            {Path, undefined};
+        {_, true} ->
+            {filename:dirname(Path), list_to_atom(filename:basename(Path, ".erl"))}
+    end.
 
 compile_and_reload(ChangedFiles, Reload) ->
     try
@@ -202,25 +203,26 @@ verbose(Format, Args) ->
 source_path(Module) ->
     proplists:get_value(source, Module:module_info(compile)).
 
-run_test(ct, _State, Module, TestCase) ->
+run_test(ct, _State, {Dir, Module, TestCase}) ->
     Opts = application:get_env(erl_dev_tools, ct_opts, []),
     Opts1 = Opts
         ++ [{auto_compile, false}]
-        ++ [{suite, Module}]
+        ++ [{dir, Dir}]
+        ++ [{suite, Module} || Module /= undefined ]
         ++ ct_group_opts(Module, TestCase)
         ++ [{testcase, TestCase} || TestCase /= undefined ],
 
     ct:run_test(Opts1);
 
-run_test(eunit, _State, Module, undefined) ->
+run_test(eunit, _State, {_Dir, Module, undefined}) ->
     Opts = [no_tty, {report, {eunit_formatter, []}}],
     eunit:test(Module, Opts);
 
-run_test(eunit, _State, Module, TestCase) ->
+run_test(eunit, _State, {_Dir, Module, TestCase}) ->
     Opts = [no_tty, {report, {eunit_formatter, []}}],
     eunit:test({Module, TestCase}, Opts);
 
-run_test(eqc, _State, Module, TestCase) when TestCase /= undefined ->
+run_test(eqc, _State, {_Dir, Module, TestCase}) when TestCase /= undefined ->
     eqc:quickcheck(Module:TestCase()).
 
 reload_modules(Modules) ->

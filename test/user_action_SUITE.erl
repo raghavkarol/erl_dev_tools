@@ -161,10 +161,13 @@ ct_path_test(Config) ->
     ok = meck:new(ct),
     ok = meck:expect(ct, run_test, fun meck_ct_run/1),
     ok = user_action:test(ct, TestFile),
-    true = meck:called(ct, run_test, [Opts ++ [{suite,file1_SUITE}]]),
+    true = meck:called(ct, run_test, [Opts ++ [{dir, '_'},
+                                               {suite,file1_SUITE}]]),
 
     ok = user_action:test(ct, TestFile, dummy_test),
-    true = meck:called(ct, run_test, [Opts ++ [{suite,file1_SUITE},{testcase, dummy_test}]]),
+    true = meck:called(ct, run_test, [Opts ++ [{dir, '_'},
+                                               {suite,file1_SUITE},
+                                               {testcase, dummy_test}]]),
     ok.
 
 ct_module_test(Config) ->
@@ -178,16 +181,17 @@ ct_module_test(Config) ->
     ok = user_action:test(ct, file1_SUITE),
     ct:pal("meck:history(ct): ~p", [meck:history(ct)]),
     ct:pal("Opts: ~p", [Opts]),
-    true = meck:called(ct, run_test, [Opts ++ [{suite,file1_SUITE}]]),
+    true = meck:called(ct, run_test, [Opts ++ [{dir, '_'}, {suite,file1_SUITE}]]),
 
     ok = user_action:test(ct, file1_SUITE, dummy_test),
-    true = meck:called(ct, run_test, [Opts ++ [{suite,file1_SUITE}, {testcase, dummy_test}]]),
+    true = meck:called(ct, run_test, [Opts ++ [{dir, '_'}, {suite,file1_SUITE}, {testcase, dummy_test}]]),
 
     ok = user_action:test(ct, file1_with_groups_SUITE, dummy_test),
-    true = meck:called(ct, run_test, [Opts ++ [{suite,file1_with_groups_SUITE}, {testcase, dummy_test}]]),
+    true = meck:called(ct, run_test, [Opts ++ [{dir, '_'}, {suite,file1_with_groups_SUITE}, {testcase, dummy_test}]]),
 
     ok = user_action:test(ct, file1_with_groups_SUITE, group_dummy_test),
-    true = meck:called(ct, run_test, [Opts ++ [{suite,file1_with_groups_SUITE},
+    true = meck:called(ct, run_test, [Opts ++ [{dir, '_'},
+                                               {suite,file1_with_groups_SUITE},
                                                {group, [group1]},
                                                {testcase, group_dummy_test}]]),
 
