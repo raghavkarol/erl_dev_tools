@@ -119,7 +119,13 @@ handle_call(test, From, #state{test = TestSpec} = State) ->
     handle_call({test, TestSpec}, From, State);
 
 handle_call({test, TestSpec = {Type, Path, TestCase, Options}}, _From, State) ->
-    maybe_compile_changes(Options, Path, State),
+    ChangedFiles = case filelib:is_dir(Path) of
+                       true ->
+                           [fswatch_buf:flush() ++ State#state.changed_files];
+                       false ->
+                           [Path|fswatch_buf:flush() ++ State#state.changed_files]
+                   end,
+    maybe_compile_changes(ChangedFiles, Options),
     {TestDir, TestModule} = get_module(Path),
     Result = run_test(Type, State, {TestDir, TestModule, TestCase}),
     State1 = State#state{test = TestSpec},
@@ -141,15 +147,13 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-maybe_compile_changes(Options, Path, State) ->
+maybe_compile_changes(ChangedFiles, Options) ->
     NoCompile = proplists:get_value(no_compile, Options, false),
     case NoCompile of
         true ->
             ok;
         false ->
-            ChangedFiles = [Path|State#state.changed_files],
-            ChangedFiles1 = fswatch_buf:flush() ++ ChangedFiles,
-            compile_and_reload(ChangedFiles1, _Reload = true)
+            compile_and_reload(ChangedFiles, _Reload = true)
     end.
 
 get_module(Path) ->
