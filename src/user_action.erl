@@ -121,7 +121,7 @@ handle_call(test, From, #state{test = TestSpec} = State) ->
 handle_call({test, TestSpec = {Type, Path, TestCase, Options}}, _From, State) ->
     ChangedFiles = case filelib:is_dir(Path) of
                        true ->
-                           [fswatch_buf:flush() ++ State#state.changed_files];
+                           fswatch_buf:flush() ++ State#state.changed_files;
                        false ->
                            [Path|fswatch_buf:flush() ++ State#state.changed_files]
                    end,
@@ -131,15 +131,19 @@ handle_call({test, TestSpec = {Type, Path, TestCase, Options}}, _From, State) ->
                 {error, compilation_failed};
             Modules when is_list(Modules) ->
                 {TestDir, TestModule} = get_module(Path),
-                run_test(Type, State, {TestDir, TestModule, TestCase}),
-                ok
+                try
+                    run_test(Type, State, {TestDir, TestModule, TestCase})
+                catch
+                    error:undef ->
+                        {error, {not_valid_testcase, TestModule, TestCase}}
+                end
         end,
     State1 =
         case Reply of
-            ok ->
-                State#state{test = TestSpec};
             {error, _} ->
-                State
+                State;
+            _ ->        % EUNIT, CT and EQC all return different value
+                State#state{test = TestSpec}
         end,
     {reply, Reply, State1}.
 
