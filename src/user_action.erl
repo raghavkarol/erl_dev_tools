@@ -125,11 +125,22 @@ handle_call({test, TestSpec = {Type, Path, TestCase, Options}}, _From, State) ->
                        false ->
                            [Path|fswatch_buf:flush() ++ State#state.changed_files]
                    end,
-    maybe_compile_changes(ChangedFiles, Options),
-    {TestDir, TestModule} = get_module(Path),
-    Result = run_test(Type, State, {TestDir, TestModule, TestCase}),
-    State1 = State#state{test = TestSpec},
-    Reply = Result,
+    Reply =
+        case maybe_compile_changes(ChangedFiles, Options) of
+            error ->
+                {error, compilation_failed};
+            Modules when is_list(Modules) ->
+                {TestDir, TestModule} = get_module(Path),
+                run_test(Type, State, {TestDir, TestModule, TestCase}),
+                ok
+        end,
+    State1 =
+        case Reply of
+            ok ->
+                State#state{test = TestSpec};
+            {error, _} ->
+                State
+        end,
     {reply, Reply, State1}.
 
 handle_cast(_Msg, State) ->
@@ -147,6 +158,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+-spec maybe_compile_changes(ChangedFiles :: list(),
+                            Options :: proplists:proplist()) ->
+   ok
+ | [atom()]
+ | {error, term()}.
 maybe_compile_changes(ChangedFiles, Options) ->
     NoCompile = proplists:get_value(no_compile, Options, false),
     case NoCompile of
@@ -184,11 +200,11 @@ compile_and_reload(ChangedFiles, Reload) ->
         Modules
     catch
         throw:{error, {term, Errors}} ->
-            io:format("~p~n", [Errors]),
+            io:format("~n~p~n", [Errors]),
             error;
         throw:{error, {string, Errors}} ->
             lists:foreach(fun(Error) ->
-                                  io:format("~s~n", [Error])
+                                  io:format("~n~s~n", [Error])
                           end, Errors),
             error
     end.
