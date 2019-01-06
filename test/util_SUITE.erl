@@ -129,13 +129,13 @@ compile_ok_test(Config) ->
 compile_fail_test(Config) ->
     Home = ?config(home, Config),
     CompileFailFile = Home ++ "/test_app/src/compile_fail.erl",
-    {error, [_], [] = _Warnings} = util:compile(CompileFailFile, [return_errors]),
+    {error, [_], [_] = _Warnings} = util:compile(CompileFailFile, [return_errors]),
     ok.
 
 compile_errors_to_emacs_parseable_string_test(Config) ->
     Home = ?config(home, Config),
     CompileFailFile = Home ++ "/test_app/src/compile_fail.erl",
-    {error, Errors, [] = _Warnings} = util:compile(CompileFailFile, [return_errors]),
+    {error, Errors, _Warnings} = util:compile(CompileFailFile, [return_errors]),
     [ErrorLine] = util:compile_errors_to_emacs_parseable_string(Errors),
     [CompileFailFile, "7", " syntax error before"," ok"] =
         string:tokens(ErrorLine, ":"),

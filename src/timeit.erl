@@ -1,5 +1,6 @@
 %% https://gist.githubusercontent.com/gburd/2656289/raw/c25e232e7f966a86ea251524eb93ce033ca1b906/timeit.erl
 -module(timeit).
+
 -compile(export_all).
 
 %% @doc Dynamically add timing to MFA.  There are various types of
@@ -28,7 +29,7 @@ stop() -> dbg:stop_clear().
 
 trace({trace, Pid, call, {Mod, Fun, _Args}}, {State, {all, {Count, Max}}}) ->
     #state{dict=D, indent=Indent} = State,
-    D2 = orddict:store({Pid, Mod, Fun}, now(), D),
+    D2 = orddict:store({Pid, Mod, Fun}, os:timestamp(), D),
     State1 = State#state{dict=D2, indent=Indent+1},
     {State1, {all, {Count, Max}}};
 trace({trace, Pid, call, {Mod, Fun, _}},
@@ -37,7 +38,7 @@ trace({trace, Pid, call, {Mod, Fun, _}},
     M2 = M+1,
     Total2 = Total+1,
     if N == M2 ->
-            D2 = orddict:store({Pid, Mod, Fun}, now(), D),
+            D2 = orddict:store({Pid, Mod, Fun}, os:timestamp(), D),
             State1 = State#state{dict=D2, indent=Indent+1},
             {State1, {sample, {N, Max}, {0, K, Total2}}};
        true ->
@@ -46,7 +47,7 @@ trace({trace, Pid, call, {Mod, Fun, _}},
 trace({trace, Pid, call, {Mod, Fun, _Args}},
       {State, {threshold, {Millis, Max}, {Over, Total}}}) ->
     #state{dict=D, indent=Indent} = State,
-    D2 = orddict:store({Pid, Mod, Fun}, now(), D),
+    D2 = orddict:store({Pid, Mod, Fun}, os:timestamp(), D),
     State1 = State#state{dict=D2, indent=Indent+1},
     {State1, {threshold, {Millis, Max}, {Over, Total+1}}};
 
@@ -57,7 +58,7 @@ trace({trace, Pid, return_from, {Mod, Fun, Args}, _Result},
     case orddict:find(Key, D) of
         {ok, StartTime} ->
             Count2 = Count+1,
-            ElapsedUs = timer:now_diff(now(), StartTime),
+            ElapsedUs = timer:now_diff(os:timestamp(), StartTime),
             ElapsedMs = ElapsedUs/1000,
             _IndentSpacs = lists:flatten([" " || _ <- lists:seq(1, Indent)]),
             io:format(user, "~p:~p:~p: ~p ~p ms\n", [Pid, Mod, Fun, Args, ElapsedMs]),
@@ -76,7 +77,7 @@ trace({trace, Pid, return_from, {Mod, Fun, _}, _Result},
     case orddict:find(Key, D) of
         {ok, StartTime} ->
             K2 = K+1,
-            ElapsedUs = timer:now_diff(now(), StartTime),
+            ElapsedUs = timer:now_diff(os:timestamp(), StartTime),
             ElapsedMs = ElapsedUs/1000,
             io:format(user, "[sample ~p/~p] ~p:~p:~p: ~p ms\n",
                       [K2, Total, Pid, Mod, Fun, ElapsedMs]),
@@ -94,7 +95,7 @@ trace({trace, Pid, return_from, {Mod, Fun, _}, _Result},
     #state{dict=D, indent=Indent} = State,
     case orddict:find(Key, D) of
         {ok, StartTime} ->
-            ElapsedUs = timer:now_diff(now(), StartTime),
+            ElapsedUs = timer:now_diff(os:timestamp(), StartTime),
             ElapsedMs = ElapsedUs / 1000,
             Over2 =
                 if ElapsedMs > Millis ->
