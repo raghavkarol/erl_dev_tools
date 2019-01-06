@@ -99,7 +99,7 @@ find_project_home(Path) ->
     end.
 
 compile_opts(outdir, Path) ->
-    case application:get_env(erl_dev_tools, mode, rebar) of
+    case application:get_env(erl_dev_tools, mode, rebar3) of
         rebar3 ->
             {ok, Home} = find_project_home(Path),
             AppName = filename:basename(Home),
