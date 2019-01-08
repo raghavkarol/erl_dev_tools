@@ -191,13 +191,13 @@ compile_and_reload(ChangedFiles, Reload) ->
         Modules = compile_loop(ChangedFiles1),
         maybe_update_code_path(ChangedFiles1),
         verbose("erl_dev_tools~n",[]),
-        [verbose("~-100s compiled ~n", [F]) || F <- ChangedFiles1],
+        [verbose("~-160s compiled ~n", [F]) || F <- ChangedFiles1],
 
         %% Report Verbose information
         case Reload of
             true ->
                 ok = reload_modules(Modules),
-                [verbose("~-100s reloaded ~n", [code:which(M)]) || M <- Modules];
+                [verbose("~-160s reloaded ~n", [code:which(M)]) || M <- Modules];
             false ->
                 ok
         end,
