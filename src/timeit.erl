@@ -1,7 +1,7 @@
 %% https://gist.githubusercontent.com/gburd/2656289/raw/c25e232e7f966a86ea251524eb93ce033ca1b906/timeit.erl
 -module(timeit).
 
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 
 %% @doc Dynamically add timing to MFA.  There are various types of
 %% timing.
