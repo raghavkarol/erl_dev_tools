@@ -229,13 +229,14 @@ source_path(Module) ->
 
 run_test(ct, _State, {Dir, Module, TestCase}) ->
     Opts = application:get_env(erl_dev_tools, ct_opts, []),
+
     Opts1 = Opts
         ++ [{auto_compile, false}]
         ++ [{dir, Dir}]
+        ++ [{logdir, "./ct_logs"}]
         ++ [{suite, Module} || Module /= undefined ]
         ++ ct_group_opts(Module, TestCase)
         ++ [{testcase, TestCase} || TestCase /= undefined ],
-
     ct:run_test(Opts1);
 
 run_test(eunit, _State, {_Dir, Module, undefined}) ->
