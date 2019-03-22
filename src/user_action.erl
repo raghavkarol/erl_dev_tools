@@ -233,7 +233,7 @@ run_test(ct, _State, {Dir, Module, TestCase}) ->
     Opts1 = Opts
         ++ [{auto_compile, false}]
         ++ [{dir, Dir}]
-        ++ [{logdir, "./ct_logs"}]
+        ++ [{logdir, "./_build/test/logs"}]
         ++ [{suite, Module} || Module /= undefined ]
         ++ ct_group_opts(Module, TestCase)
         ++ [{testcase, TestCase} || TestCase /= undefined ],
