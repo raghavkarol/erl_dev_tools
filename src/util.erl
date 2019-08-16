@@ -99,26 +99,19 @@ find_project_home(Path) ->
     end.
 
 compile_opts(outdir, Path) ->
-    case application:get_env(erl_dev_tools, mode, rebar3) of
-        rebar3 ->
-            {ok, Home} = find_project_home(Path),
-            AppName = filename:basename(Home),
-            Home ++ "/_build/erl_dev_tools/lib/" ++ AppName ++ "/ebin/";
-        rebar ->
-            case {is_ct_suite(Path), is_in_src_dir(Path)} of
-                {false, false} ->
-                    filename:dirname(Path);
-                {false, true} ->
-                    filename:dirname(filename:dirname(Path)) ++ "/ebin";
-                {true, false} ->
-                    filename:dirname(Path)
-            end
-    end;
+    {ok, Home} = find_project_home(Path),
+    AppName = filename:basename(Home),
+    Home ++ "/_build/erl_dev_tools/lib/" ++ AppName ++ "/ebin/";
 
+%% -include_lib("erlcloud/include/erlcloud_aws.hrl").
+%% -include_lib("erlcloud_aws.hrl").
 compile_opts(i, Path) ->
     {ok, Home} = find_project_home(Path),
-    [Home ++ "/include"] ++ filelib:wildcard(Home ++ "/deps/*/include/").
-
+    IncludeDirs = [Home ++ "/include"] ++
+        filelib:wildcard(Home ++ "/_build/default/lib/*/include"),
+    IncludeLibDirs = filelib:wildcard(Home ++ "/_checkouts") ++
+        filelib:wildcard(Home ++ "/_build/default/lib"),
+    IncludeLibDirs ++ IncludeDirs.
 
 is_ct_suite(Path) ->
     case lists:reverse(filename:basename(Path, ".erl")) of
