@@ -10,12 +10,57 @@
          compile_errors_to_emacs_parseable_string/1,
          compile_opts/2,
          reload/1,
-         find_project_home/1
+         find_project_home/1,
+
+         latest_suite_log/0,
+         print_suite_log/1,
+         print_latest_suite_log/0
         ]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
+
+prefix_path(Prefix, Path) ->
+    io_lib:format("~s/~s", [Prefix, Path]).
+
+suite_log_pattern() ->
+    "_build/test/logs/**/suite.log".
+
+latest_file(Pattern) ->
+    Dirs1 = filelib:wildcard(Pattern),
+    Dirs2 = lists:sort(Dirs1),
+    Dirs3 = lists:reverse(Dirs2),
+
+    [Latest| _ ] = Dirs3,
+    Latest.
+
+latest_suite_log() ->
+    {ok, Cwd} = file:get_cwd(),
+    Pattern = prefix_path(Cwd, suite_log_pattern()),
+    File = latest_file(Pattern),
+    File.
+
+print_suite_log(File) ->
+    Header =  "- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -",
+    {ok, Contents} = file:read_file(File),
+    Lines = binary:split(Contents, <<"\n">>, [global]),
+    io:format("~s~n", [Header]),
+    lists:foreach(fun(Line = <<"=result        ", Rest/binary>>) ->
+                          io:format("~s~n", [Rest]);
+                     (Line = <<"   ", _/binary>>) ->
+                          io:format("~s~n", [Line]);
+                     (_Line) ->
+                          ignore
+                  end,
+                  Lines),
+    io:format("~s~n", [Header]),
+    ok.
+
+print_latest_suite_log() ->
+    File = latest_suite_log(),
+    print_suite_log(File).
+
 
 %% Could normalize path using a shell command
 %% os:cmd("cd /Users/raghav/github/erl_dev_tools/../erl_dev_tools/../erl_dev_tools/ ; pwd").

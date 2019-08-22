@@ -229,7 +229,6 @@ source_path(Module) ->
 
 run_test(ct, _State, {Dir, Module, TestCase}) ->
     Opts = application:get_env(erl_dev_tools, ct_opts, []),
-
     Opts1 = Opts
         ++ [{auto_compile, false}]
         ++ [{dir, Dir}]
@@ -237,7 +236,14 @@ run_test(ct, _State, {Dir, Module, TestCase}) ->
         ++ [{suite, Module} || Module /= undefined ]
         ++ ct_group_opts(Module, TestCase)
         ++ [{testcase, TestCase} || TestCase /= undefined ],
-    ct:run_test(Opts1);
+    Result = ct:run_test(Opts1),
+    case Result of
+        {Passed, Failed = 0, {_, _}} ->
+            {ok, Module, TestCase};
+        {Passed, Failed, {_, _}} ->
+            util:print_latest_suite_log(),
+            {error, Module, TestCase}
+    end;
 
 run_test(eunit, _State, {_Dir, Module, undefined}) ->
     Opts = [no_tty, {report, {eunit_formatter, []}}],
