@@ -227,6 +227,11 @@ verbose(Format, Args) ->
 source_path(Module) ->
     proplists:get_value(source, Module:module_info(compile)).
 
+format_result({Status, Module, undefined}) ->
+    {Status, Module};
+format_result({Status, Module, TestCase}) ->
+    {Status, Module, TestCase}.
+
 run_test(ct, _State, {Dir, Module, TestCase}) ->
     Opts = application:get_env(erl_dev_tools, ct_opts, []),
     Opts1 = Opts
@@ -237,12 +242,13 @@ run_test(ct, _State, {Dir, Module, TestCase}) ->
         ++ ct_group_opts(Module, TestCase)
         ++ [{testcase, TestCase} || TestCase /= undefined ],
     Result = ct:run_test(Opts1),
+
     case Result of
         {Passed, Failed = 0, {_, _}} ->
-            {ok, Module, TestCase};
+            format_result({ok, Module, TestCase});
         {Passed, Failed, {_, _}} ->
             util:print_latest_suite_log(),
-            {error, Module, TestCase}
+            format_result({error, Module, TestCase})
     end;
 
 run_test(eunit, _State, {_Dir, Module, undefined}) ->
