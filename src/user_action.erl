@@ -113,7 +113,7 @@ handle_call({reload, Module}, _From, State) ->
     {reply, Reply, State};
 
 handle_call(test, _From, #state{test = undefined} = State) ->
-    {reply, no_previous_test, State};
+    {reply, '$no_previous_test', State};
 
 handle_call(test, From, #state{test = TestSpec} = State) ->
     handle_call({test, TestSpec}, From, State);
