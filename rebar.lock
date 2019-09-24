@@ -1,8 +1,10 @@
-[{<<"meck">>,
-  {git,"git://github.com/eproxus/meck.git",
-       {ref,"c772db17a7c94e75d20688197f61538d63fe2ae9"}},
-  0},
+{"1.1.0",
+[{<<"meck">>,{pkg,<<"meck">>,<<"0.8.13">>},0},
  {<<"tdiff">>,
   {git,"git://github.com/tomas-abrahamsson/tdiff.git",
        {ref,"bbb54ce20df388f2c7d01e8df30ef471ca98d0fb"}},
-  0}].
+  0}]}.
+[
+{pkg_hash,[
+ {<<"meck">>, <<"FFEDB39F99B0B99703B8601C6F17C7F76313EE12DE6B646E671E3188401F7866">>}]}
+].

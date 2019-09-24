@@ -11,7 +11,8 @@
          compile_opts/2,
          reload/1,
          find_project_home/1,
-
+         is_ct_suite/1,
+         is_in_src_dir/1,
          latest_suite_log/0,
          print_suite_log/1,
          print_latest_suite_log/0
@@ -46,7 +47,7 @@ print_suite_log(File) ->
     {ok, Contents} = file:read_file(File),
     Lines = binary:split(Contents, <<"\n">>, [global]),
     io:format("~s~n", [Header]),
-    lists:foreach(fun(Line = <<"=result        ", Rest/binary>>) ->
+    lists:foreach(fun(_Line = <<"=result        ", Rest/binary>>) ->
                           io:format("~s~n", [Rest]);
                      (Line = <<"   ", _/binary>>) ->
                           io:format("~s~n", [Line]);
@@ -185,33 +186,18 @@ find_project_home_test() ->
 
     ok.
 
-compile_opts_rebar_test() ->
-    application:set_env(erl_dev_tools, mode, rebar),
-    {ok, Cwd} = file:get_cwd(),
-    [ErlSrcFile|_] = filelib:wildcard(Cwd ++ "/src/*.erl"),
-    [ErlTestFile|_] = filelib:wildcard(Cwd ++ "/test/*.erl"),
-
-    ExpectedOutDirSrcFile = filename:dirname(filename:dirname(ErlSrcFile)) ++ "/ebin",
-    ExpectedOutDirTestFile = filename:dirname((ErlTestFile)),
-
-    ExpectedOutDirSrcFile = compile_opts(outdir, ErlSrcFile),
-    ExpectedOutDirTestFile = compile_opts(outdir, ErlTestFile),
-
-    ExpectedIncludeDirs = [Cwd ++ "/include"],
-    ExpectedIncludeDirs = compile_opts(i, ErlSrcFile),
-    ok.
-
 compile_opts_rebar3_test() ->
     application:set_env(erl_dev_tools, mode, rebar3),
     {ok, Cwd} = file:get_cwd(),
     [ErlSrcFile|_] = filelib:wildcard(Cwd ++ "/src/*.erl"),
     [ErlTestFile|_] = filelib:wildcard(Cwd ++ "/test/*.erl"),
-
     ExpectedOutDir = Cwd ++ "/_build/erl_dev_tools/lib/erl_dev_tools/ebin/",
     ExpectedOutDir = compile_opts(outdir, ErlSrcFile),
     ExpectedOutDir = compile_opts(outdir, ErlTestFile),
 
-    ExpectedIncludeDirs = [Cwd ++ "/include"],
+    ExpectedIncludeDirs = [Cwd ++ "/_build/default/lib",
+                           Cwd ++ "/include",
+                           Cwd ++ "/_build/default/lib/erl_dev_tools/include"],
     ExpectedIncludeDirs = compile_opts(i, ErlSrcFile),
     ok.
 

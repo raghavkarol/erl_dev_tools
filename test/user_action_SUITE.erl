@@ -160,14 +160,17 @@ ct_path_test(Config) ->
 
     ok = meck:new(ct),
     ok = meck:expect(ct, run_test, fun meck_ct_run/1),
-    ok = user_action:test(ct, TestFile),
+    {ok, file1_SUITE} = user_action:test(ct, TestFile),
+
     true = meck:called(ct, run_test, [Opts ++ [{dir, '_'},
+                                               {logdir,"./_build/test/logs"},
                                                {suite,file1_SUITE}]]),
 
-    ok = user_action:test(ct, TestFile, dummy_test),
+    {ok, file1_SUITE, dummy_test} = user_action:test(ct, TestFile, dummy_test),
     true = meck:called(ct, run_test, [Opts ++ [{dir, '_'},
-                                               {suite,file1_SUITE},
-                                               {testcase, dummy_test}]]),
+                                              {logdir,"./_build/test/logs"},
+                                              {suite,file1_SUITE},
+                                              {testcase, dummy_test}]]),
     ok.
 
 ct_module_test(Config) ->
@@ -178,19 +181,19 @@ ct_module_test(Config) ->
 
     ok = meck:new(ct),
     ok = meck:expect(ct, run_test, fun meck_ct_run/1),
-    ok = user_action:test(ct, file1_SUITE),
-    ct:pal("meck:history(ct): ~p", [meck:history(ct)]),
-    ct:pal("Opts: ~p", [Opts]),
-    true = meck:called(ct, run_test, [Opts ++ [{dir, '_'}, {suite,file1_SUITE}]]),
+    {ok, file1_SUITE} = user_action:test(ct, file1_SUITE),
+    true = meck:called(ct, run_test, [Opts ++ [{dir, '_'}, {logdir, "./_build/test/logs"}, {suite,file1_SUITE}]]),
 
-    ok = user_action:test(ct, file1_SUITE, dummy_test),
-    true = meck:called(ct, run_test, [Opts ++ [{dir, '_'}, {suite,file1_SUITE}, {testcase, dummy_test}]]),
+    {ok,file1_SUITE,dummy_test} = user_action:test(ct, file1_SUITE, dummy_test),
+    true = meck:called(ct, run_test, [Opts ++ [{dir, '_'}, {logdir, "./_build/test/logs"}, {suite,file1_SUITE}, {testcase, dummy_test}]]),
 
-    ok = user_action:test(ct, file1_with_groups_SUITE, dummy_test),
-    true = meck:called(ct, run_test, [Opts ++ [{dir, '_'}, {suite,file1_with_groups_SUITE}, {testcase, dummy_test}]]),
+    {ok,file1_with_groups_SUITE,dummy_test}= user_action:test(ct, file1_with_groups_SUITE, dummy_test),
+    true = meck:called(ct, run_test, [Opts ++ [{dir, '_'}, {logdir, "./_build/test/logs"}, {suite,file1_with_groups_SUITE}, {testcase, dummy_test}]]),
 
-    ok = user_action:test(ct, file1_with_groups_SUITE, group_dummy_test),
+    {ok,file1_with_groups_SUITE,group_dummy_test} = user_action:test(ct, file1_with_groups_SUITE, group_dummy_test),
+
     true = meck:called(ct, run_test, [Opts ++ [{dir, '_'},
+                                               {logdir, "./_build/test/logs"},
                                                {suite,file1_with_groups_SUITE},
                                                {group, [group1]},
                                                {testcase, group_dummy_test}]]),
@@ -201,7 +204,7 @@ eqc_path_test(Config) ->
     TestDir = ?config(test_app_test, Config),
     TestFile = TestDir ++ "file1_eqc.erl",
 
-    ok = meck:new(eqc),
+    ok = meck:new(eqc, [non_strict]),
     ok = meck:expect(eqc, quickcheck, fun meck_ct_eqc_quickcheck/1),
     user_action:test(eqc, TestFile, prop_dummy),
     true = meck:called(eqc, quickcheck, [file1_eqc:prop_dummy()]),
@@ -212,7 +215,7 @@ eqc_module_test(Config) ->
     TestFile = TestDir ++ "file1_eqc.erl",
     file1_eqc = user_action:compile(TestFile),
 
-    ok = meck:new(eqc),
+    ok = meck:new(eqc, [non_strict]),
     ok = meck:expect(eqc, quickcheck, fun meck_ct_eqc_quickcheck/1),
     user_action:test(eqc, file1_eqc, prop_dummy),
     true = meck:called(eqc, quickcheck, [file1_eqc:prop_dummy()]),
@@ -227,9 +230,10 @@ meck_eunit(_Module, _Opts) ->
     ok.
 
 meck_ct_run(_Props) ->
-    ok.
+    {_Passed = 1, _Failed = 0, {'_', '_'}}.
 
-meck_ct_eqc_quickcheck(_Prop) ->
+meck_ct_eqc_quickcheck(Prop) ->
+    ct:pal(">>> Prop:  ~p ~n", [Prop]),
     ok.
 
 maybe_remove_trailing_slash(Path) ->

@@ -13,7 +13,6 @@
          reload/1,
          compile_and_reload/1,
          compile_and_reload_all_changes/0,
-         get_last_test/0,
          test/0,
          test/2,
          test/3,
@@ -77,10 +76,6 @@ test(Type, Path, TestCase) when is_atom(TestCase) ->
 test(Type, Path, TestCase, Options) when is_atom(TestCase) ->
     Timeout = proplists:get_value(timeout, Options, ?TIMEOUT),
     gen_server:call(?SERVER, {test, {Type, Path, TestCase, Options}}, Timeout).
-
-get_last_test() ->
-    gen_server:call(?SERVER, get_last_test).
-
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -149,13 +144,7 @@ handle_call({test, TestSpec = {Type, Path, TestCase, Options}}, _From, State) ->
             _ ->        % EUNIT, CT and EQC all return different value
                 State#state{test = TestSpec}
         end,
-    {reply, Reply, State1};
-
-handle_call(get_last_test, _From, #state{test = undefined} = State) ->
-    {reply, '$no_previous_test', State};
-
-handle_call(get_last_test, _From, #state{test = TestSpec} = State) ->
-    {reply, TestSpec, State}.
+    {reply, Reply, State1}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -254,9 +243,9 @@ run_test(ct, _State, {Dir, Module, TestCase}) ->
     Result = ct:run_test(Opts1),
 
     case Result of
-        {Passed, Failed = 0, {_, _}} ->
+        {_Passed, _Failed = 0, {_, _}} ->
             format_result({ok, Module, TestCase});
-        {Passed, Failed, {_, _}} ->
+        {_Passed, _Failed, {_, _}} ->
             util:print_latest_suite_log(),
             format_result({error, Module, TestCase})
     end;
