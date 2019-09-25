@@ -56,12 +56,12 @@ handle_call(wait_get_changes, From, #state{changes = _} = State) ->
     erlang:send_after(0, ?MODULE, reply_wait_get_changes),
     {noreply, State#state{waiting_proc = From}};
 
-handle_call(flush, _From, #state{changes = Changes} = State) ->
+handle_call(flush, _From, State) ->
     State1 = State#state{changes = []},
     Changed = changed_paths(State),
     {reply, Changed, State1};
 
-handle_call(changed_files, _From, #state{changes = Changes} = State) ->
+handle_call(changed_files, _From, State) ->
     Changed = changed_paths(State),
     {reply, Changed, State}.
 

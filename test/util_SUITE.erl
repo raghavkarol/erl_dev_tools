@@ -8,7 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(util_SUITE).
 
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -129,7 +129,7 @@ compile_ok_test(Config) ->
 compile_fail_test(Config) ->
     Home = ?config(home, Config),
     CompileFailFile = Home ++ "/test_app/src/compile_fail.erl",
-    {error, [_], [_] = _Warnings} = util:compile(CompileFailFile, [return_errors]),
+    {error, [_], [] = _Warnings} = util:compile(CompileFailFile, [return_errors]),
     ok.
 
 compile_errors_to_emacs_parseable_string_test(Config) ->
@@ -147,7 +147,7 @@ compile_errors_to_emacs_parseable_string_test(Config) ->
 compile_ok_file_bin() ->
     <<"-module(compile_ok).
 
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 
 main() ->
   ok.
@@ -156,7 +156,7 @@ main() ->
 compile_fail_file_bin() ->
     <<"-module(compile_fail).
 
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 
 main() ->
    alk;jasf

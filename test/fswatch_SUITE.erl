@@ -8,7 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(fswatch_SUITE).
 
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -209,7 +209,7 @@ fwatch_flush_test(Config) ->
 %% Internal Functions
 %%--------------------------------------------------------------------
 pick(List) ->
-    N = random:uniform(length(List)),
+    N = rand:uniform(length(List)),
     lists:nth(N, List).
 
 get_changes(ExpectedCount) ->
