@@ -4,6 +4,7 @@
 
 %% API
 -export([start_link/0,
+         changed_files/0,
          flush/0,
          register_change/2]).
 
@@ -33,6 +34,9 @@ register_change(Path, Flags) ->
 flush() ->
     gen_server:call(?MODULE, flush).
 
+changed_files() ->
+    gen_server:call(?MODULE, changed_files).
+
 %% @doc
 %% testing only
 wait_get_changes() ->
@@ -53,8 +57,13 @@ handle_call(wait_get_changes, From, #state{changes = _} = State) ->
     {noreply, State#state{waiting_proc = From}};
 
 handle_call(flush, _From, #state{changes = Changes} = State) ->
-    {reply, changed_paths(Changes), State#state{changes = []}}.
+    State1 = State#state{changes = []},
+    Changed = changed_paths(State),
+    {reply, Changed, State1};
 
+handle_call(changed_files, _From, #state{changes = Changes} = State) ->
+    Changed = changed_paths(State),
+    {reply, Changed, State}.
 
 handle_cast({register_change, Path, Flags}, State) ->
     #state{changes = Changes} = State,
@@ -69,11 +78,10 @@ handle_cast({register_change, Path, Flags}, State) ->
     State1 = State#state{changes = Changes1},
     {noreply, State1}.
 
-handle_info(reply_wait_get_changes, #state{waiting_proc = From,
-                                           changes = Changes} = State)
+handle_info(reply_wait_get_changes, #state{waiting_proc = From} = State)
 
  when From =/= undefined ->
-    gen_server:reply(State#state.waiting_proc, changed_paths(Changes)),
+    gen_server:reply(State#state.waiting_proc, changed_paths(State)),
     {noreply, State#state{waiting_proc = undefined}};
 
 handle_info(_Info, State) ->
@@ -88,5 +96,5 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-changed_paths(Changes) ->
+changed_paths(#state{changes = Changes}) ->
     lists:usort([Path0 || {Path0, _Props} <- Changes]).

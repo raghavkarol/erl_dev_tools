@@ -89,8 +89,13 @@ handle_call(compile_all_changes, _From, State) ->
     {reply, Reply, State};
 
 handle_call(compile_and_reload_all_changes, _From, State) ->
-    ChangedFiles = fswatch_buf:flush() ++ State#state.changed_files,
+    ChangedFiles = fswatch_buf:changed_files() ++ State#state.changed_files,
     Reply = compile_and_reload(ChangedFiles, _Reload = true),
+    if Reply /= error ->
+            fswatch_buf:flush();
+       true ->
+            ok
+    end,
     {reply, Reply, State};
 
 handle_call({compile_and_reload, Path}, _From, State) ->
@@ -120,15 +125,16 @@ handle_call(test, From, #state{test = TestSpec} = State) ->
 handle_call({test, TestSpec = {Type, Path, TestCase, Options}}, _From, State) ->
     ChangedFiles = case filelib:is_dir(Path) of
                        true ->
-                           fswatch_buf:flush() ++ State#state.changed_files;
+                           fswatch_buf:changed_files() ++ State#state.changed_files;
                        false ->
-                           [Path|fswatch_buf:flush() ++ State#state.changed_files]
+                           [Path|fswatch_buf:changed_files() ++ State#state.changed_files]
                    end,
     Reply =
         case maybe_compile_changes(ChangedFiles, Options) of
             error ->
                 {error, compilation_failed};
             Modules when is_list(Modules) ->
+                _ = fswatch_buf:flush(),
                 {TestDir, TestModule} = get_module(Path),
                 try
                     run_test(Type, State, {TestDir, TestModule, TestCase})
