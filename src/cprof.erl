@@ -22,6 +22,7 @@
          reset/0,
          reset/1,
          stop_tracer/0,
+         top_calls/1,
          top_calls/2]).
 
 %% tracer callback
@@ -171,6 +172,9 @@ stop() ->
 
 slow_call_by_id(Id) when is_integer(Id) ->
     gen_statem:call(?SERVER, {slow_call_by_id, Id}).
+
+top_calls(Type) ->
+    top_calls(Type, 10).
 
 top_calls(Type, N) when Type == slow_calls;
                         Type == total_time;
