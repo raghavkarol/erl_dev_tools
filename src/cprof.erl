@@ -1,25 +1,25 @@
 %%% The poor man's profiler, profiles on wall clock time.
 -module(cprof).
 
--behaviour(gen_statem).                         %
+-behaviour(gen_statem).
 
 %% API
--export([
-         start_link/0,
+-export([start_link/0,
          start_link/1,
          start/0,
          start/1,
          stop/0]).
 
 %% API
--export([
-         add/1,
+-export([add/1,
          add/3,
-         stop_tracer/0,
+         enable_capture_calls/2,
          pretty_print/1,
-         top_calls/2,
+         pretty_print/2,
          reset/0,
-         reset/1]).
+         reset/1,
+         stop_tracer/0,
+         top_calls/2]).
 
 %% tracer callback
 -export([trace/2]).
@@ -28,19 +28,26 @@
 -export([init/1, callback_mode/0, handle_event/4,
          terminate/3, code_change/3]).
 
+-define(DEFAULT_MAX_CALLS, 10).
+-define(INFINITY, trunc(8.64e7)).
+
 -define(SERVER, ?MODULE).
 -define(PROFILE_TABLE, cprof_result).
 -define(PROCESS_TABLE, cprof_processes).
--define(DEFAULT_MAX_CALLS, 10).
+-define(SLOW_CALL_TABLE, cprof_slow_calls).
 
+-record(state, {max_calls=100,
+                num_calls=0,
+                max_capture_calls=10,           % rename max_capture_calls and slow_call_threshold
+                slow_call_threshold=?INFINITY}).
 
--record(state, {max_calls = 100, num_calls = 0}).
-
--record(call, {key, module, function, time=0}).
+-record(call, {key, module, function, time=0, args=undefined}).
 
 -record(process, {pid=undefined, stack=[]}).
 
 -record(profile, {key, module, function, count=0, total_time=0, times=[]}).
+
+-record(slow_call, {key, module, function, args, time}).
 
 %% -----------------------------------------------------------------------------
 %% API
@@ -54,6 +61,41 @@ add(Mod, Fun, Arity) ->
     dbg:tpl(Mod, Fun, Arity, [{'_', [], [{return_trace}]}]).
 
 pretty_print(Calls) ->
+    pretty_print(calls, Calls).
+
+pretty_print(slow_calls, Calls) ->
+    io:format("~s~n", [[with_width("Key", -15),
+                        " ",
+                        with_width("Module:Function", 20),
+                        " ",
+                        with_width("Time (ms)", 10),
+                        " ",
+                        with_width("Args", -80),
+                        " "]]),
+    io:format("~s~n", [[lists:duplicate(15, "-"),
+                        " ",
+                        lists:duplicate(20, "-"),
+                        " ",
+                        lists:duplicate(10, "-"),
+                        " ",
+                        lists:duplicate(80, "-"),
+                        " "]]),
+    io:format("~s~n", [[[with_width(to_string(Key), -15),
+                         " ",
+                         with_width([to_string(M), ":", to_string(F)], 20),
+                         " ",
+                         with_width(to_string(Time), 10),
+                         " ",
+                         with_width(io_lib:format("~W", [Args, 77]), -80),
+                         " ",
+                         "\n"]
+                        || #slow_call{key=Key,
+                                      module=M,
+                                      function=F,
+                                      args=Args,
+                                      time=Time} <- Calls]]);
+
+pretty_print(calls, Calls) ->
     Percentiles = [0.99, 0.75, 0.50],
     io:format("~s~n", [[with_width("Module:Function", -20),
                         " ",
@@ -110,10 +152,13 @@ reset(MaxCalls) ->
 stop() ->
     gen_statem:stop(?SERVER).
 
-top_calls(Type, N) when Type == total_time;
+top_calls(Type, N) when Type == slow_calls;
+                        Type == total_time;
                         Type == count ->
     gen_statem:call(?SERVER, {top_calls, Type, N}).
 
+enable_capture_calls(MaxCalls, ThresholdMs) when MaxCalls =< 100 ->
+    gen_statem:call(?SERVER, {enable_capture_calls, MaxCalls, ThresholdMs}).
 
 %% -----------------------------------------------------------------------------
 %% tracer callback
@@ -140,6 +185,11 @@ handle_event({call, From}, {reset, MaxCalls}, _State, _Data) ->
     init1(),
     {next_state, ready, new_state(MaxCalls), [{reply, From, ok}]};
 
+handle_event({call, From}, {enable_capture_calls, MaxCalls, ThresholdMs}, _State, Data) ->
+    Data1 = Data#state{slow_call_threshold = ThresholdMs,
+                       max_capture_calls=MaxCalls},
+    {keep_state, Data1, [{reply, From, ok}]};
+
 handle_event({call, From}, {trace, _, call, _}, limit, _Data) ->
     Actions = [tracer_reply(From)],
     {keep_state_and_data, Actions};
@@ -150,9 +200,9 @@ handle_event({call, From}, {trace, _, return_from, _, _}, limit, _Data) ->
 
 handle_event({call, From}, {trace, _, call, _} = Trace, ready, Data) ->
     {trace, Pid, call, MFArgs} = Trace,
-    {M, F, _A} = MFArgs,
+    {M, F, Args} = MFArgs,
     Key = {M, F},
-    Call = #call{key=Key, module=M, function=F, time=current_time()},
+    Call = #call{key=Key, module=M, function=F, time=current_time(), args=Args},
     Process =
         case ets:lookup(?PROCESS_TABLE, Pid) of
             [] ->
@@ -184,12 +234,21 @@ handle_event({call, From}, {trace, _, return_from, _, _} = Trace, ready, Data) -
         end,
     Now = current_time(),
     #process{stack=[Top|Rest]} = Process,
-    #call{module=M, function=F, time=Time} = Top, % Ensure module and function are same for top function
+    #call{module=M, function=F, time=Time, args=Args} = Top,
     #profile{total_time=TotalTime, count=Count, times=Times} = Profile,
     Elapsed = (Now-Time),
     Profile1 = Profile#profile{total_time=Elapsed+TotalTime, count=Count+1, times=[Elapsed|Times]},
     Process1 = Process#process{stack=Rest},
 
+    SlowCallTableSize = ets:info(?SLOW_CALL_TABLE, size),
+    case SlowCallTableSize < Data#state.max_capture_calls andalso Elapsed >= Data#state.slow_call_threshold of
+        true ->
+            SlowCallKey = erlang:phash2(make_ref()),
+            SlowCall = #slow_call{key=SlowCallKey, module=M, function=F, time=Elapsed, args=Args},
+            ets:insert(?SLOW_CALL_TABLE, SlowCall);
+        _ ->
+            ok
+    end,
     ets:insert(?PROFILE_TABLE, Profile1),
     ets:insert(?PROCESS_TABLE, Process1),
 
@@ -198,24 +257,26 @@ handle_event({call, From}, {trace, _, return_from, _, _} = Trace, ready, Data) -
     maybe_stop_tracer(Data1),
     case is_tracer_limit(Data1) of
         true ->
-            io:format("tracer limit reached.~n", []),
+            io:format("tracer limit ~p reached ~n", [Data#state.max_calls]),
             {next_state, limit, Data1, Actions};
         false ->
             {keep_state, Data1, Actions}
     end;
 
-handle_event({call, From}, {top_calls, Type, N}, _State, Data) ->
+handle_event({call, From}, {top_calls, slow_calls, N}, _State, _Data) ->
+    Result = ets:tab2list(?SLOW_CALL_TABLE),
+    Result1 = top(N, #slow_call.time, Result),
+    {keep_state_and_data, [{reply, From, Result1}]};
+
+handle_event({call, From}, {top_calls, total_time, N}, _State, _Data) ->
     Result = ets:tab2list(?PROFILE_TABLE),
-    Keypos = case Type of
-                 total_time ->
-                     #profile.total_time;
-                 count ->
-                     #profile.count
-             end,
+    Result1 = top(N, #profile.total_time, Result),
+    {keep_state_and_data, [{reply, From, Result1}]};
 
-    Result1 = top(N, Keypos, Result),
-    {keep_state, Data, [{reply, From, Result1}]};
-
+handle_event({call, From}, {top_calls, count, N}, _State, _Data) ->
+    Result = ets:tab2list(?PROFILE_TABLE),
+    Result1 = top(N, #profile.count, Result),
+    {keep_state_and_data, [{reply, From, Result1}]};
 
 handle_event({call, From}, Event, State, _Data) ->
     io:format("unexpected event: ~p in State: ~p", [Event, State]),
@@ -241,11 +302,14 @@ init1() ->
 
 create_storage() ->
     ?PROFILE_TABLE = ets:new(?PROFILE_TABLE, [named_table, {keypos, #profile.key}]),
-    ?PROCESS_TABLE = ets:new(?PROCESS_TABLE, [named_table, {keypos, #process.pid}]).
+    ?PROCESS_TABLE = ets:new(?PROCESS_TABLE, [named_table, {keypos, #process.pid}]),
+    ?SLOW_CALL_TABLE = ets:new(?SLOW_CALL_TABLE, [named_table, {keypos, #slow_call.key}]).
 
 delete_storage() ->
     true = ets:delete(?PROFILE_TABLE),
-    true = ets:delete(?PROCESS_TABLE).
+    true = ets:delete(?PROCESS_TABLE),
+    true = ets:delete(?SLOW_CALL_TABLE).
+
 
 start_tracer() ->
     dbg:tracer(process, {fun ?MODULE:trace/2, trace_state}),
