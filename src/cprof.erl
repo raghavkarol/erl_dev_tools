@@ -9,8 +9,7 @@
          start_link/1,
          start/0,
          start/1,
-         stop/0
-        ]).
+         stop/0]).
 
 %% API
 -export([
@@ -19,8 +18,8 @@
          stop_tracer/0,
          pretty_print/1,
          top_calls/2,
-         reset/0
-        ]).
+         reset/0,
+         reset/1]).
 
 %% tracer callback
 -export([trace/2]).
@@ -32,6 +31,8 @@
 -define(SERVER, ?MODULE).
 -define(PROFILE_TABLE, cprof_result).
 -define(PROCESS_TABLE, cprof_processes).
+-define(DEFAULT_MAX_CALLS, 10).
+
 
 -record(state, {max_calls = 100, num_calls = 0}).
 
@@ -39,7 +40,7 @@
 
 -record(process, {pid=undefined, stack=[]}).
 
--record(profile, {key, module, function, count=0, total_time=0}).
+-record(profile, {key, module, function, count=0, total_time=0, times=[]}).
 
 %% -----------------------------------------------------------------------------
 %% API
@@ -53,42 +54,58 @@ add(Mod, Fun, Arity) ->
     dbg:tpl(Mod, Fun, Arity, [{'_', [], [{return_trace}]}]).
 
 pretty_print(Calls) ->
+    Percentiles = [0.99, 0.75, 0.50],
     io:format("~s~n", [[with_width("Module:Function", -20),
                         " ",
-                        with_width("Total Time (msecs)", 20),
+                        with_width("Total time ms", 20),
                         " ",
-                        with_width("Count", 10)]]),
+                        with_width("Count", 10),
+                        " ",
+                        [[with_width(["p", to_string(trunc(P*100)), "(ms)"], 10), " "] || P <- Percentiles]
+                       ]]),
     io:format("~s~n", [[lists:duplicate(20, "-"),
                         " ",
                         lists:duplicate(20, "-"),
                         " ",
-                        lists:duplicate(10, "-")]]),
+                        lists:duplicate(10, "-"),
+                        " ",
+                        [[lists:duplicate(10, "-"), " "] || _P <- Percentiles]
+                       ]]),
     io:format("~s~n", [[[with_width([to_string(M), ":", to_string(F)], -20),
                          " ",
                          with_width(to_string(TotalTime), 20),
                          " ",
                          with_width(to_string(Count), 10),
+                         " ",
+                         [[with_width(to_string(T), 10), " "] || {_P, T} <- percentiles(Times, Percentiles)],
                          "\n"]
                         || #profile{module=M,
                                     function=F,
                                     count=Count,
-                                    total_time=TotalTime} <- Calls]]).
+                                    total_time=TotalTime,
+                                    times = Times} <- Calls]]).
 
 
 %% -----------------------------------------------------------------------------
 %% Server control API
 %% -----------------------------------------------------------------------------
 start_link() ->
-    start_link(10).
+    start_link(?DEFAULT_MAX_CALLS).
 
 start_link(MaxCalls) ->
     gen_statem:start_link({local, ?SERVER}, ?MODULE, [MaxCalls], []).
 
 start() ->
-    start(10).
+    start(?DEFAULT_MAX_CALLS).
 
 start(MaxCalls) ->
     gen_statem:start({local, ?SERVER}, ?MODULE, [MaxCalls], []).
+
+reset() ->
+    reset(?DEFAULT_MAX_CALLS).
+
+reset(MaxCalls) ->
+    gen_statem:call(?SERVER, {reset, MaxCalls}).
 
 stop() ->
     gen_statem:stop(?SERVER).
@@ -97,8 +114,6 @@ top_calls(Type, N) when Type == total_time;
                         Type == count ->
     gen_statem:call(?SERVER, {top_calls, Type, N}).
 
-reset() ->
-    gen_statem:call(?SERVER, reset).
 
 %% -----------------------------------------------------------------------------
 %% tracer callback
@@ -117,10 +132,13 @@ callback_mode() ->
 
 init([MaxCalls]) ->
     process_flag(trap_exit, true),
-
     init1(),
-
     {ok, ready, new_state(MaxCalls)}.
+
+handle_event({call, From}, {reset, MaxCalls}, _State, _Data) ->
+    delete_storage(),
+    init1(),
+    {next_state, ready, new_state(MaxCalls), [{reply, From, ok}]};
 
 handle_event({call, From}, {trace, _, call, _}, limit, _Data) ->
     Actions = [tracer_reply(From)],
@@ -166,9 +184,10 @@ handle_event({call, From}, {trace, _, return_from, _, _} = Trace, ready, Data) -
         end,
     Now = current_time(),
     #process{stack=[Top|Rest]} = Process,
-    #call{time=Time} = Top,
-    #profile{total_time=TotalTime, count=Count} = Profile, % TODO: ensure that we match the Module and function in profile and top of the stack
-    Profile1 = Profile#profile{total_time=TotalTime+(Now-Time), count=Count+1},
+    #call{module=M, function=F, time=Time} = Top, % Ensure module and function are same for top function
+    #profile{total_time=TotalTime, count=Count, times=Times} = Profile,
+    Elapsed = (Now-Time),
+    Profile1 = Profile#profile{total_time=Elapsed+TotalTime, count=Count+1, times=[Elapsed|Times]},
     Process1 = Process#process{stack=Rest},
 
     ets:insert(?PROFILE_TABLE, Profile1),
@@ -184,12 +203,6 @@ handle_event({call, From}, {trace, _, return_from, _, _} = Trace, ready, Data) -
         false ->
             {keep_state, Data1, Actions}
     end;
-
-handle_event({call, From}, reset, _State, Data) ->
-    delete_storage(),
-    init1(),
-    Data1 = new_state(Data#state.max_calls),
-    {next_state, ready, Data1, [{reply, From, ok}]};
 
 handle_event({call, From}, {top_calls, Type, N}, _State, Data) ->
     Result = ets:tab2list(?PROFILE_TABLE),
@@ -281,3 +294,18 @@ to_string(L) ->
 
 with_width(T, W) ->
     lists:flatten(io_lib:format("~" ++ to_string(W) ++ "s", [to_string(T)])).
+
+%% https://gist.github.com/ferd/6008781
+percentiles(Numbers) ->
+    %% [0.50, 0.75, 0.90, 0.95, 0.99, 0.999]
+    percentiles(Numbers, [0.99, 0.95, 0.50]).
+
+percentiles(Numbers, P) ->
+    Percentile = fun(List, Size, Perc) ->
+        Element = round(Perc * Size),
+        lists:nth(Element, List)
+    end,
+    Len = length(Numbers),
+    Sorted = lists:sort(Numbers),
+    [{trunc(Perc*100), Percentile(Sorted, Len, Perc)} ||
+        Perc <- P].
