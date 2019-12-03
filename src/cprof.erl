@@ -16,6 +16,9 @@
          enable_capture_calls/2,
          pretty_print/1,
          pretty_print/2,
+         pretty_print_slow_call/1,
+         pretty_print_slow_call/2,
+         slow_call_by_id/1,
          reset/0,
          reset/1,
          stop_tracer/0,
@@ -62,6 +65,20 @@ add(Mod, Fun, Arity) ->
 
 pretty_print(Calls) ->
     pretty_print(calls, Calls).
+
+pretty_print_slow_call(Call) ->
+    pretty_print_slow_call(Call, 128).
+
+pretty_print_slow_call({ok, S}, Width) ->
+    #slow_call{time=Time, module=M, function=F, args=Args} = S,
+    io:format("~n", []),
+    io:format("pretty printing using erlang apply~n", []),
+    io:format("----------------------------------~n", []),
+    io:format("erlang:apply(~p, ~p,~n~160P)~n", [M, F, Args, Width]),
+    io:format("took time ~p ms~n", [Time]);
+
+pretty_print_slow_call({error, E}, _) ->
+    io:format("~p", [E]).
 
 pretty_print(slow_calls, Calls) ->
     io:format("~s~n", [[with_width("Key", -15),
@@ -151,6 +168,9 @@ reset(MaxCalls) ->
 
 stop() ->
     gen_statem:stop(?SERVER).
+
+slow_call_by_id(Id) when is_integer(Id) ->
+    gen_statem:call(?SERVER, {slow_call_by_id, Id}).
 
 top_calls(Type, N) when Type == slow_calls;
                         Type == total_time;
@@ -262,6 +282,15 @@ handle_event({call, From}, {trace, _, return_from, _, _} = Trace, ready, Data) -
         false ->
             {keep_state, Data1, Actions}
     end;
+
+handle_event({call, From}, {slow_call_by_id, Id}, _State, _Data) ->
+    Result1 = case ets:lookup(?SLOW_CALL_TABLE, Id) of
+                  [Call] ->
+                      {ok, Call};
+                  [] ->
+                      {error, not_found}
+              end,
+    {keep_state_and_data, [{reply, From, Result1}]};
 
 handle_event({call, From}, {top_calls, slow_calls, N}, _State, _Data) ->
     Result = ets:tab2list(?SLOW_CALL_TABLE),
