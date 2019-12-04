@@ -45,13 +45,13 @@
                 max_capture_calls=10,           % rename max_capture_calls and slow_call_threshold
                 slow_call_threshold=?INFINITY}).
 
--record(call, {key, module, function, time=0, args=undefined}).
+-record(call, {key, module, function, arity, time=0, args=undefined}).
 
 -record(process, {pid=undefined, stack=[]}).
 
--record(profile, {key, module, function, count=0, total_time=0, times=[]}).
+-record(profile, {key, module, function, arity, count=0, total_time=0, times=[]}).
 
--record(slow_call, {key, module, function, args, time}).
+-record(slow_call, {key, module, function, arity, args, time}).
 
 %% -----------------------------------------------------------------------------
 %% API
@@ -82,9 +82,10 @@ pretty_print_slow_call({error, E}, _) ->
     io:format("~p", [E]).
 
 pretty_print(slow_calls, Calls) ->
+    MFWidth=60,
     io:format("~s~n", [[with_width("Key", -15),
                         " ",
-                        with_width("Module:Function", 20),
+                        with_width("MFA", MFWidth),
                         " ",
                         with_width("Time (ms)", 10),
                         " ",
@@ -92,7 +93,7 @@ pretty_print(slow_calls, Calls) ->
                         " "]]),
     io:format("~s~n", [[lists:duplicate(15, "-"),
                         " ",
-                        lists:duplicate(20, "-"),
+                        lists:duplicate(MFWidth, "-"),
                         " ",
                         lists:duplicate(10, "-"),
                         " ",
@@ -100,7 +101,7 @@ pretty_print(slow_calls, Calls) ->
                         " "]]),
     io:format("~s~n", [[[with_width(to_string(Key), -15),
                          " ",
-                         with_width([to_string(M), ":", to_string(F)], 20),
+                         with_width([to_string(M), ":", to_string(F)], MFWidth),
                          " ",
                          with_width(to_string(Time), 10),
                          " ",
@@ -115,35 +116,56 @@ pretty_print(slow_calls, Calls) ->
 
 pretty_print(calls, Calls) ->
     Percentiles = [0.99, 0.75, 0.50],
-    io:format("~s~n", [[with_width("Module:Function", -20),
+    MFWidth=60,
+    CountWidth=10,
+    Total = lists:sum([Count || #profile{count=Count} <- Calls]),
+    io:format("~s~n", [[with_width("MFA", -MFWidth),
                         " ",
                         with_width("Total time ms", 20),
                         " ",
-                        with_width("Count", 10),
+                        with_width("Count", CountWidth),
                         " ",
                         [[with_width(["p", to_string(trunc(P*100)), "(ms)"], 10), " "] || P <- Percentiles]
                        ]]),
-    io:format("~s~n", [[lists:duplicate(20, "-"),
+    io:format("~s~n", [[lists:duplicate(MFWidth, "-"),
                         " ",
                         lists:duplicate(20, "-"),
                         " ",
-                        lists:duplicate(10, "-"),
+                        lists:duplicate(CountWidth, "-"),
                         " ",
                         [[lists:duplicate(10, "-"), " "] || _P <- Percentiles]
                        ]]),
-    io:format("~s~n", [[[with_width([to_string(M), ":", to_string(F)], -20),
+    io:format("~s~n", [[[with_width([to_string(M), ":", to_string(F), "/", to_string(Arity)], -MFWidth),
                          " ",
                          with_width(to_string(TotalTime), 20),
                          " ",
-                         with_width(to_string(Count), 10),
+                         [with_width(to_string(Count), CountWidth)],
                          " ",
                          [[with_width(to_string(T), 10), " "] || {_P, T} <- percentiles(Times, Percentiles)],
                          "\n"]
                         || #profile{module=M,
                                     function=F,
+                                    arity=Arity,
                                     count=Count,
                                     total_time=TotalTime,
-                                    times = Times} <- Calls]]).
+                                    times = Times} <- Calls]]),
+        io:format("~s~n", [[lists:duplicate(MFWidth, " "),
+                        " ",
+                        lists:duplicate(20, " "),
+                        " ",
+                        lists:duplicate(CountWidth, "-"),
+                        " ",
+                        [[lists:duplicate(10, " "), " "] || _P <- Percentiles]
+                       ]]),
+
+    io:format("~s~n", [[lists:duplicate(MFWidth, " "),
+                        " ",
+                        lists:duplicate(20, " "),
+                        " ",
+                        [with_width(to_string(Total), CountWidth)],
+                        " ",
+                        [[lists:duplicate(10, " "), " "] || _P <- Percentiles]
+                       ]]).
 
 
 %% -----------------------------------------------------------------------------
@@ -224,9 +246,10 @@ handle_event({call, From}, {trace, _, return_from, _, _}, limit, _Data) ->
 
 handle_event({call, From}, {trace, _, call, _} = Trace, ready, Data) ->
     {trace, Pid, call, MFArgs} = Trace,
-    {M, F, Args} = MFArgs,
-    Key = {M, F},
-    Call = #call{key=Key, module=M, function=F, time=current_time(), args=Args},
+    {M, F, Args} = MFArgs,                     % Can not store args per pid, can cause the node to OOM
+    Arity = length(Args),
+    Key = {M, F, Arity},
+    Call = #call{key=Key, module=M, function=F, time=current_time(), arity=Arity, args=none},
     Process =
         case ets:lookup(?PROCESS_TABLE, Pid) of
             [] ->
@@ -242,39 +265,45 @@ handle_event({call, From}, {trace, _, call, _} = Trace, ready, Data) ->
 
 handle_event({call, From}, {trace, _, return_from, _, _} = Trace, ready, Data) ->
     {trace, Pid, return_from, MFArity, _Result} = Trace,
-    {M, F, _Arity} = MFArity,
-    Key = {M, F},
+    {M, F, Arity} = MFArity,
+    Key = {M, F, Arity},
     Profile =
         case ets:lookup(?PROFILE_TABLE, Key) of
             [] ->
-                #profile{key=Key, module=M, function=F};
+                #profile{key=Key, module=M, function=F, arity=Arity};
             [P0 = #profile{}] ->
                 P0
         end,
-    Process =
-        case ets:lookup(?PROCESS_TABLE, Pid) of
-            [P1 = #process{}] ->
-                P1
-        end,
-    Now = current_time(),
-    #process{stack=[Top|Rest]} = Process,
-    #call{module=M, function=F, time=Time, args=Args} = Top,
-    #profile{total_time=TotalTime, count=Count, times=Times} = Profile,
-    Elapsed = (Now-Time),
-    Profile1 = Profile#profile{total_time=Elapsed+TotalTime, count=Count+1, times=[Elapsed|Times]},
-    Process1 = Process#process{stack=Rest},
+    try
+        Process =
+            case ets:lookup(?PROCESS_TABLE, Pid) of
+                [P1 = #process{}] ->
+                    P1;
+                [] ->
+                    throw(no_process)
+            end,
+        Now = current_time(),
+        #process{stack=[Top|Rest]} = Process,
+        #call{module=M, function=F, time=Time, arity=Arity, args=Args} = Top,
+        #profile{total_time=TotalTime, count=Count, times=Times} = Profile,
+        Elapsed = (Now-Time),
+        Profile1 = Profile#profile{total_time=Elapsed+TotalTime, count=Count+1, times=[Elapsed|Times]},
+        Process1 = Process#process{stack=Rest},
 
-    SlowCallTableSize = ets:info(?SLOW_CALL_TABLE, size),
-    case SlowCallTableSize < Data#state.max_capture_calls andalso Elapsed >= Data#state.slow_call_threshold of
-        true ->
-            SlowCallKey = erlang:phash2(make_ref()),
-            SlowCall = #slow_call{key=SlowCallKey, module=M, function=F, time=Elapsed, args=Args},
-            ets:insert(?SLOW_CALL_TABLE, SlowCall);
-        _ ->
+        SlowCallTableSize = ets:info(?SLOW_CALL_TABLE, size),
+        case SlowCallTableSize < Data#state.max_capture_calls andalso Elapsed >= Data#state.slow_call_threshold of
+            true ->
+                SlowCallKey = erlang:phash2(make_ref()),
+                SlowCall = #slow_call{key=SlowCallKey, module=M, function=F, time=Elapsed, arity=Arity, args=Args},
+                ets:insert(?SLOW_CALL_TABLE, SlowCall);
+            _ ->
+                ok
+        end,
+        ets:insert(?PROFILE_TABLE, Profile1),
+        ets:insert(?PROCESS_TABLE, Process1)
+    catch throw:no_process ->
             ok
     end,
-    ets:insert(?PROFILE_TABLE, Profile1),
-    ets:insert(?PROCESS_TABLE, Process1),
 
     Actions = [tracer_reply(From)],
     Data1 = update_state(Data),
