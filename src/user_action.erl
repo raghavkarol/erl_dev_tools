@@ -11,6 +11,8 @@
          compile/1,
          compile_all_changes/0,
          reload/1,
+         watch_changes/0,
+         watch_changes/1,
          compile_and_reload/1,
          compile_and_reload_all_changes/0,
          test/0,
@@ -23,6 +25,7 @@
          terminate/2, code_change/3]).
 
 -record(state, {changed_files = [] :: [string()],
+                watch_changes_tref,
                 test}).
 
 -define(TIMEOUT, trunc(timer:minutes(3))).
@@ -74,11 +77,34 @@ test(Type, Path, TestCase, Options) when is_atom(TestCase) ->
     Timeout = proplists:get_value(timeout, Options, ?TIMEOUT),
     gen_server:call(?SERVER, {test, {Type, Path, TestCase, Options}}, Timeout).
 
+watch_changes() ->
+    Interval = application:get_env(erl_dev_tools, watch_changes_interval, 5000),
+    watch_changes(Interval).
+
+watch_changes(Interval) ->
+    gen_server:call(?SERVER, {watch_changes, Interval}).
+
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 init([]) ->
     {ok, #state{}}.
+
+maybe_cancel_timer(undefined) ->
+    ok;
+maybe_cancel_timer(T) ->
+    timer:cancel(T).
+
+handle_call({watch_changes, Interval}, _From, #state{watch_changes_tref = Tref} = State) ->
+    maybe_cancel_timer(Tref),
+
+    verbose("started watching changes with interval ~p msecs", [Interval]),
+    {ok, Tref1} = timer:apply_interval(Interval, user_action, compile_and_reload_all_changes, []),
+
+    State1 = State#state{watch_changes_tref = Tref1},
+    Reply = ok,
+    {reply, Reply, State1};
 
 handle_call(compile_all_changes, _From, State) ->
     ChangedFiles = fswatch_buf:flush() ++ State#state.changed_files,
@@ -193,13 +219,18 @@ compile_and_reload(ChangedFiles, Reload) ->
         Modules = compile_loop(ChangedFiles1),
         maybe_update_code_path(ChangedFiles1),
         verbose("erl_dev_tools~n",[]),
-        [verbose("~-160s compiled ~n", [F]) || F <- ChangedFiles1],
+        if ChangedFiles1 /= [] ->
+                info("~n", []);
+           true ->
+                ok
+        end,
+        [info("~-160s compiled ~n", [F]) || F <- ChangedFiles1],
 
         %% Report Verbose information
         case Reload of
             true ->
                 ok = reload_modules(Modules),
-                [verbose("~-160s reloaded ~n", [code:which(M)]) || M <- Modules];
+                [info("~-160s reloaded ~n", [code:which(M)]) || M <- Modules];
             false ->
                 ok
         end,
@@ -216,11 +247,12 @@ compile_and_reload(ChangedFiles, Reload) ->
     end.
 
 
+info(Format, Args) ->
+    io:format("==> " ++ Format, Args).
+
 verbose(Format, Args) ->
     case application:get_env(erl_dev_tools, verbose, true) of
         true ->
-            %% ==> rebar
-            %% ===> rebar3
             io:format("==> " ++ Format, Args);
         false ->
             ok
