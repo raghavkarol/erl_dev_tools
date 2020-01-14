@@ -309,8 +309,7 @@ compile_loop(Result, [File|Rest]) ->
     compile_loop(NewResult, Rest).
 
 default_compile_flags() ->
-    [export_all, debug_info, return_errors,
-     {d, 'EQC'}, {d, 'TEST'}].
+    [export_all, debug_info, return_errors, {d, 'TEST'}].
 
 parse_transform_compile_flags(Flags) ->
     case code:which(lager) of
