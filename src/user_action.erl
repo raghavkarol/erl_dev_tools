@@ -37,9 +37,6 @@ start_link() ->
 compile(Module) when is_atom(Module) ->
     compile(source_path(Module));
 
-compile(Module) when is_atom(Module) ->
-    compile(source_path(Module));
-
 compile(Path) ->
     gen_server:call(?SERVER, {compile, Path}).
 
