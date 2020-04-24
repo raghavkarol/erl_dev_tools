@@ -7,7 +7,7 @@
    [kernel,
     stdlib
    ]},
-  {env,[{erl_dev_tools, verbose, false}]},
+  {env,[{verbose, false}]},
   {modules, []},
 
   {maintainers, []},
