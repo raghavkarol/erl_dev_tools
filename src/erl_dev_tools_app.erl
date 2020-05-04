@@ -17,6 +17,13 @@
 start(_StartType, _StartArgs) ->
     {ok, Pid} = erl_dev_tools_sup:start_link(),
     start_fswatch(),
+    case os:getenv("ERL_DEV_TOOLS_WATCH_CHANGES") of
+        V when V == "1";
+               V == "true" ->
+            user_action:watch_changes();
+        _ ->
+            ok
+    end,
     {ok, Pid}.
 
 stop(_State) ->
